@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BLE 电子纸</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px 5px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      min-height: 50px;
+
+      max-height: 200px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      font-size: 12px;
+    }
+
+    #imagePreviewsContainer {
+      display: flex;
+      gap: 16px;
+      /* 两个预览框之间的间距 */
+      margin: 10px 0;
+      flex-wrap: wrap;
+      /* 允许在窄屏时换行 */
+      justify-content: center;
+    }
+
+    .preview-box {
+      width: 380px;
+      height: 300px;
+      border: 2px dashed #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .preview-box img {
+      max-width: 100%;
+      max-height: 100%;
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: auto;
+    }
+
+    .preview-box .placeholder {
+      color: #999;
+      pointer-events: none;
+    }
+
+    @media (max-width: 640px) {
+      #imagePreviewsContainer {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Web BLE 电子纸</h1>
+
+  <form>
+    <label for="allDevices">All Devices</label>
+    <input id="allDevices" type="checkbox">
+    <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF">
+    <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic">
+    <input id="name" type="text" size=17 placeholder="Device Name">
+    <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
+    <button>Connect Device</button>
+    <div>
+      <label>型号:</label>
+      <input id="model" type="text" readonly>
+    </div>
+    <div>
+      <label>宽:</label>
+      <input id="width" type="text" readonly>
+    </div>
+    <div>
+      <label>高:</label>
+      <input id="height" type="text" readonly>
+    </div>
+    <div>
+      <label>调色板色彩数:</label>
+      <input id="paletteColors" type="text" readonly>
+    </div>
+    <div>
+      <label>调色板颜色列表:</label>
+      <span id="paletteContainer" style="display: inline-flex; gap: 5px; margin-left: 10px;">
+        <div style="width: 20px; height: 20px; background-color: #FF0000;"></div>
+        <div style="width: 20px; height: 20px; background-color: #00FF00;"></div>
+        <div style="width: 20px; height: 20px; background-color: #0000FF;"></div>
+        <div style="width: 20px; height: 20px; background-color: #FFFFFF;"></div>
+      </span>
+    </div>
+  </form>
+
+  <div id="imagePreviewsContainer">
+    <!-- 原图预览 -->
+    <div class="preview-box">
+      <span class="placeholder">📷 原图</span>
+      <img id="previewImage" src="" alt="原图">
+    </div>
+
+    <!-- 量化图预览 -->
+    <div class="preview-box">
+      <span class="placeholder">📊 量化图</span>
+      <img id="quantizedImage" src="" alt="量化图">
+    </div>
+  </div>
+
+  <input type="file" id="imageInput" accept="image/*" style="display: none;">
+
+  <button id="getinfobtn">Get Info</button>
+  <button id="sendbtn">Send Image</button>
+  <button id="quantizedImagebtn">Quantized Image</button>
+  <div style="margin-top: 10px;">
+    <button id="downloadBinBtn">下载 BIN 文件</button>
+    <button id="importBinBtn">导入 BIN 还原预览</button>
+    <input type="file" id="fileInput" style="display: none;" accept=".bin">
+  </div>
+
+  <div id="status">状态：等待操作...</div>
+
+
+  <script src="libs/RgbQuant/src/rgbquant.js"></script>
+  <script>
+    let deviceConfig = [];
+    let outputData = null;
+
+    let bleState = {
+      connected: false,
+      device: null,
+      server: null,
+      service: null,
+      characteristics: null,
+      ch_tx: null,
+      ch_rx: null,
+    };
+
+    function log(...args) {
+      const statusDiv = document.getElementById('status');
+      if (statusDiv) {
+        // 将所有参数转为字符串并用空格连接（模仿 console.log）
+        const message = args.map(arg =>
+          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        ).join(' ');
+
+        const line = document.createElement('div');
+        line.textContent = message;
+        statusDiv.appendChild(line);
+        statusDiv.scrollTop = statusDiv.scrollHeight;
+      } else {
+        console.warn('未找到 #status 元素');
+      }
+    }
+
+    function isWebBluetoothEnabled() {
+      if (navigator.bluetooth) {
+        return true;
+      } else {
+        console.log('Web Bluetooth API is not available.\n' +
+          'Please make sure the "Experimental Web Platform features" flag is enabled.');
+        return false;
+      }
+    }
+
+    function printCharPermissions(char, name) {
+      const props = char.properties;
+      log(`\n--- ${name} (${char.uuid}) ---`);
+      log('Readable:     ', props.read);
+      log('Writable (req):', props.write);
+      log('Writable (cmd):', props.writeWithoutResponse);
+      log('Notifiable:    ', props.notify);
+      log('Indicatable:   ', props.indicate);
+    }
+
+    function convertImageToBytes(img) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+
+      ctx.drawImage(img, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const rgbaData = imageData.data; // Uint8ClampedArray
+
+      const rgbData = new Uint8Array(rgbaData.length / 4 * 3);
+      let j = 0;
+      for (let i = 0; i < rgbaData.length; i += 4) {
+        rgbData[j++] = rgbaData[i];     // R
+        rgbData[j++] = rgbaData[i + 1]; // G
+        rgbData[j++] = rgbaData[i + 2]; // B
+        // 跳过 Alpha: rgbaData[i + 3]
+      }
+
+      return rgbData;
+    }
+
+    async function startBle() {
+      let filters = [];
+
+      let serviceUuid = document.querySelector('#service').value;
+      if (serviceUuid.startsWith('0x')) {
+        serviceUuid = parseInt(serviceUuid);
+      }
+
+      let characteristicUuid = document.querySelector('#characteristic').value;
+      if (characteristicUuid.startsWith('0x')) {
+        characteristicUuid = parseInt(characteristicUuid);
+      }
+
+      let filterService = document.querySelector('#service').value;
+
+      if (filterService.startsWith('0x')) {
+        filterService = parseInt(filterService);
+      }
+      if (filterService) {
+        filters.push({ services: [filterService] });
+      }
+
+      let filterName = document.querySelector('#name').value;
+      if (filterName) {
+        filters.push({ name: filterName });
+      }
+
+      let filterNamePrefix = document.querySelector('#namePrefix').value;
+      if (filterNamePrefix) {
+        filters.push({ namePrefix: filterNamePrefix });
+      }
+
+      let options = {};
+      if (document.querySelector('#allDevices').checked) {
+        options.acceptAllDevices = true;
+      } else {
+        options.filters = filters;
+      }
+
+      try {
+
+        log('Requesting Bluetooth Device...');
+        log('with ' + JSON.stringify(options));
+        bleState.device = await navigator.bluetooth.requestDevice(options)
+
+        log('Connecting to GATT Server...');
+        bleState.server = await bleState.device.gatt.connect();
+
+        log('Getting Service...');
+        bleState.service = await bleState.server.getPrimaryService(serviceUuid);
+
+        log('Getting Characteristics...');
+        bleState.characteristics = await bleState.service.getCharacteristics();
+
+        log('> Characteristics: ' +
+          bleState.characteristics.map(c => c.uuid).join('\n' + ' '.repeat(19)));
+
+        bleState.ch_tx = await bleState.service.getCharacteristic(0xFF05); // 写
+        bleState.ch_rx = await bleState.service.getCharacteristic(0xFF04); // 读
+
+        const value = await bleState.ch_rx.readValue();
+        log('Char FF04 value: ' + value);
+
+        const bytes = new Uint8Array(value.buffer);
+        log(`✅ FF04 读取成功，共 ${bytes.length} 字节:`);
+        log('数据（十六进制）:', bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+        try {
+          const jsonString = new TextDecoder().decode(value);
+          log('数据（JSON 文本）:', `"${jsonString}"`);
+
+          // 可选：解析为 JS 对象并美化打印
+          const jsonObj = JSON.parse(jsonString);
+          log('数据（解析后对象）:', JSON.stringify(jsonObj, null, 2));
+
+          if (jsonObj.palette) {
+            devicePalette = jsonObj.palette.split(';').map(c => c.split(',').map(Number));
+          }
+
+          document.getElementById('model').value = jsonObj.name || "未知";
+          document.getElementById('width').value = jsonObj.width || 0;
+          document.getElementById('height').value = jsonObj.height || 0;
+          document.getElementById('paletteColors').value = jsonObj.bpp || 0;
+
+          // 2. 处理并渲染调色板
+          const paletteContainer = document.getElementById('paletteContainer');
+          if (paletteContainer && jsonObj.palette) {
+            // 清空旧的颜色方块
+            paletteContainer.innerHTML = '';
+
+            // 解析调色板字符串 "0,0,0;255,255,255;..."
+            const colors = jsonObj.palette.split(';');
+
+            colors.forEach(colorRgb => {
+              // 创建颜色预览方块
+              const colorBox = document.createElement('div');
+              colorBox.style.width = '20px';
+              colorBox.style.height = '20px';
+              colorBox.style.border = '1px solid #ccc'; // 加个边框防止白色块看不见
+
+              // 将 "0,0,0" 转换为 CSS 的 "rgb(0,0,0)"
+              colorBox.style.backgroundColor = `rgb(${colorRgb})`;
+
+              // 添加到容器中
+              paletteContainer.appendChild(colorBox);
+            });
+          }
+
+          log('✅ UI 信息更新完成');
+        } catch (e) {
+          log('⚠️ 数据不是有效 JSON:', e.message);
+        }
+      }
+      catch (error) {
+        log('Argh! ' + error);
+      };
+    }
+
+    document.getElementById('sendbtn').addEventListener('click', async () => {
+      if (!outputData || outputData.length === 0) {
+        alert("请先进行图片量化，生成输出数据！");
+        return;
+      }
+
+      if (!bleState.ch_tx) {
+        alert("蓝牙未连接或写入特性不可用！");
+        return;
+      }
+
+      const CHUNK_SIZE = 490; // 每个包包含的图像数据长度
+      const totalPackets = Math.ceil(outputData.length / CHUNK_SIZE);
+      const totalBytes = outputData.length;
+      log(`开始发送数据，总计 ${outputData.length} 字节，分为 ${totalPackets} 个包...`);
+      log(`📡 发送开始指令: 总大小 ${totalBytes} 字节`);
+
+      try {
+        const startCmd = new Uint8Array(5);
+        startCmd[0] = 0x03;
+        startCmd[1] = (totalBytes >> 24) & 0xFF;
+        startCmd[2] = (totalBytes >> 16) & 0xFF;
+        startCmd[3] = (totalBytes >> 8) & 0xFF;
+        startCmd[4] = totalBytes & 0xFF;
+
+        log(`📡 发送开始指令: 总大小 ${totalBytes} 字节`);
+        await bleState.ch_tx.writeValue(startCmd);
+
+        //time.sleep(0.05);
+
+        for (let i = 0; i < totalPackets; i++) {
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, totalBytes);
+          const actualPayloadLen = end - start; // 最后一包可能小于 490
+
+          const packet = new Uint8Array(5 + actualPayloadLen);
+          packet[0] = 0x04;
+          packet[1] = (i >> 24) & 0xFF;
+          packet[2] = (i >> 16) & 0xFF;
+          packet[3] = (i >> 8) & 0xFF;
+          packet[4] = i & 0xFF;
+
+          // 4. 填充接下来的 490 字节图像数据
+          const chunk = outputData.slice(start, end);
+          packet.set(chunk, 5);
+
+          // 5. 通过蓝牙发送 (使用 writeValue 或 writeValueWithResponse)
+          // 注意：如果设备支持，建议使用 writeValueWithResponse 确保数据到达
+          await bleState.ch_tx.writeValue(packet);
+
+          // 6. 更新进度 (可选)
+          if (i % 10 === 0 || i === totalPackets - 1) {
+            const progress = ((i + 1) / totalPackets * 100).toFixed(1);
+            log(`进度: ${progress}% (${i + 1}/${totalPackets})`);
+          }
+
+          // 💡 如果发送过快导致丢包，可以加一个微小的延迟
+          // await new Promise(resolve => setTimeout(resolve, 10)); 
+        }
+
+        const endCmd = new Uint8Array([0x05]);
+        log("📡 发送结束指令");
+        await bleState.ch_tx.writeValue(endCmd);
+
+        log("✅ 所有数据包发送完成！");
+        alert("传输成功！");
+
+      } catch (error) {
+        log(`❌ 发送失败: ${error.message}`);
+        console.error(error);
+        alert("传输中断，请检查蓝牙连接");
+      }
+    });
+
+    document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
+      // 1. 获取设备要求的宽高
+      const targetWidth = parseInt(document.getElementById('width').value);
+      const targetHeight = parseInt(document.getElementById('height').value);
+
+      if (!targetWidth || !targetHeight || devicePalette.length === 0) {
+        alert("请先读取设备信息"); return;
+      }
+
+      const img = document.getElementById('previewImage');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      // 获取完整的 ImageData 对象
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // 2. 初始化 RgbQuant
+      const rgbquant = new RgbQuant({
+        palette: devicePalette,
+        colors: devicePalette.length,
+        reps: 0,
+        dithKern: "FloydSteinberg",
+        dithSerp: true
+      });
+
+      // 【重要修正】直接传入 imageData 对象，获取像素索引数组
+      // 此时 indexData.length 理论上应等于 targetWidth * targetHeight
+      const indexData = rgbquant.reduce(imageData, 2);
+      // 🔍 打印关键信息进行核对
+      console.log("--- 原始索引数据排查 ---");
+      console.log("预期像素总数 (W*H):", 1304 * 984);
+      console.log("实际 indexData 长度:", indexData.length);
+      console.log("前 10 个像素的索引值:", indexData.slice(0, 10));
+
+      if (indexData.length !== 1304 * 984) {
+        console.error("❌ 警告：索引数组长度与分辨率不匹配！可能是 RgbQuant 配置或原图尺寸问题。");
+      }
+
+
+      const pixelCount = targetWidth * targetHeight;
+      const colorCount = devicePalette.length;
+      let packedData;
+
+      console.log(`像素总数(W*H): ${pixelCount}`);
+      console.log(`索引数组长度: ${indexData.length}`);
+
+      // 3. 严格按像素总数进行打包逻辑
+      if (colorCount <= 2) {
+        // 【1bpp】 8像素 -> 1字节
+        packedData = new Uint8Array(Math.ceil(pixelCount / 8));
+        for (let i = 0; i < pixelCount; i++) {
+          const val = indexData[i] & 0x01;
+          const byteIdx = Math.floor(i / 8);
+          const bitShift = 7 - (i % 8);
+          packedData[byteIdx] |= (val << bitShift);
+        }
+      }
+      else if (colorCount <= 4) {
+        const w = 1304; // 强制固定宽度，确保步进一致
+        const h = 984;
+        const stride = w / 4; // 每行严格 326 字节
+
+        packedData = new Uint8Array(stride * h);
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            // 计算在原始像素数组中的索引 (假设 indexData 是 w*h 长度)
+            const pixelIdx = y * w + x;
+            let val = (indexData[pixelIdx] !== undefined) ? (indexData[pixelIdx] & 0x03) : 0;
+
+            // 三色屏映射逻辑：如果索引是2（通常是红色），映射为3（硬件上的红色位）
+            if (colorCount === 3 && val === 2) val = 3;
+
+            // 计算目标字节位置：行偏移 + 列偏移
+            const byteIdx = y * stride + Math.floor(x / 4);
+
+            // 关键：第一个像素在最高位 (Bit 7-6)
+            const bitShift = (3 - (x % 4)) * 2;
+
+            // 初始化字节（仅在处理每组4个像素的第一个时）
+            if (x % 4 === 0) packedData[byteIdx] = 0;
+
+            // 按位压入
+            packedData[byteIdx] |= (val << bitShift);
+          }
+        }
+      }
+      else {
+        // 【4bpp】 2像素 -> 1字节
+        packedData = new Uint8Array(Math.ceil(pixelCount / 2));
+        for (let i = 0; i < pixelCount; i++) {
+          const val = indexData[i] & 0x0F;
+          const byteIdx = Math.floor(i / 2);
+          const bitShift = (1 - (i % 2)) * 4; // 4, 0
+          packedData[byteIdx] |= (val << bitShift);
+        }
+      }
+
+      // 4. 更新全局变量并输出结果
+      outputData = packedData;
+      console.log(`✅ 打包成功! 最终输出长度: ${outputData.length} 字节`);
+
+      // UI 预览
+      const visualData = rgbquant.reduce(imageData);
+      imageData.data.set(visualData);
+      ctx.putImageData(imageData, 0, 0);
+      const quantizedImage = document.getElementById('quantizedImage');
+      quantizedImage.src = canvas.toDataURL();
+      quantizedImage.style.display = 'block';
+    });
+
+    // 点击占位符或文字区域时触发文件选择
+    document.querySelector('.preview-box').addEventListener('click', () => {
+      console.log('点击了预览框');
+      document.getElementById('imageInput').click();
+    });
+
+    // 文件选择后显示预览
+    document.getElementById('imageInput').addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = document.getElementById('previewImage');
+        img.src = e.target.result;
+        img.style.display = 'block';
+
+        // 隐藏原图的 placeholder
+        const box = img.closest('.preview-box');
+        const placeholder = box.querySelector('.placeholder');
+        if (placeholder) placeholder.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.querySelector('form').addEventListener('submit', function (event) {
+      event.stopPropagation();
+      event.preventDefault();
+
+      if (isWebBluetoothEnabled()) {
+        console.clear();
+        startBle();
+      }
+    });
+
+    document.getElementById('downloadBinBtn').addEventListener('click', () => {
+      if (!outputData || outputData.length === 0) {
+        alert("请先进行图片量化！");
+        return;
+      }
+
+      // 创建 Blob 对象
+      const blob = new Blob([outputData], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+
+      // 创建隐藏的下载链接
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `image_${document.getElementById('width').value}x${document.getElementById('height').value}.bin`;
+      document.body.appendChild(a);
+      a.click();
+
+      // 清理
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 0);
+
+      console.log("✅ BIN文件已导出");
+    });
+
+    // 触发文件选择
+    document.getElementById('importBinBtn').addEventListener('click', () => {
+      document.getElementById('fileInput').click();
+    });
+
+    // 处理文件读取与反向渲染
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const buffer = await file.arrayBuffer();
+      const importedData = new Uint8Array(buffer);
+
+      const w = parseInt(document.getElementById('width').value);
+      const h = parseInt(document.getElementById('height').value);
+      const colorCount = devicePalette.length;
+
+      if (!w || !h || colorCount === 0) {
+        alert("请先确保设备信息已读取（宽/高/调色板）");
+        return;
+      }
+
+      console.log(`开始还原: ${importedData.length} 字节 -> ${w}x${h} 图像`);
+
+      // 1. 创建用于显示的 Canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(w, h);
+      const rgba = imageData.data;
+
+      // 2. 反向解码逻辑 (Unpacking)
+      for (let i = 0; i < w * h; i++) {
+        let paletteIndex = 0;
+
+        if (colorCount <= 2) {
+          // 1bpp 还原
+          const byte = importedData[Math.floor(i / 8)];
+          const bitShift = 7 - (i % 8);
+          paletteIndex = (byte >> bitShift) & 0x01;
+        }
+        else if (colorCount <= 4) {
+          // 2bpp 还原
+          const byte = importedData[Math.floor(i / 4)];
+          const bitShift = (3 - (i % 4)) * 2;
+          paletteIndex = (byte >> bitShift) & 0x03;
+
+          // 3色屏特殊映射还原 (0b11 -> 索引2)
+          if (colorCount === 3 && paletteIndex === 3) paletteIndex = 2;
+        }
+        else {
+          // 4bpp 还原
+          const byte = importedData[Math.floor(i / 2)];
+          const bitShift = (1 - (i % 2)) * 4;
+          paletteIndex = (byte >> bitShift) & 0x0F;
+        }
+
+        // 3. 从调色板取色并填入 RGBA 数组
+        const rgb = devicePalette[paletteIndex] || [0, 0, 0];
+        const offset = i * 4;
+        rgba[offset] = rgb[0]; // R
+        rgba[offset + 1] = rgb[1]; // G
+        rgba[offset + 2] = rgb[2]; // B
+        rgba[offset + 3] = 255;    // A (不透明)
+      }
+
+      // 4. 将还原后的图像显示到页面
+      ctx.putImageData(imageData, 0, 0);
+      const quantizedImage = document.getElementById('quantizedImage');
+      quantizedImage.src = canvas.toDataURL();
+      quantizedImage.style.display = 'block';
+
+      log("✅ 图像反向还原成功");
+    });
+  </script>
+</body>
+
+</html>

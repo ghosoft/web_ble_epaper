@@ -1,0 +1,3 @@
+[submodule "libs/RgbQuant"]
+	path = libs/RgbQuant
+	url = https://github.com/leeoniya/RgbQuant.js.git
