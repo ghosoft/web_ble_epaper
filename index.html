@@ -14,11 +14,48 @@
       background: #f9f9f9;
     }
 
+    .control-group {
+      border: 2px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+      background-color: #f9f9f9;
+    }
+
+
     button {
       padding: 10px 20px;
       font-size: 16px;
       margin: 10px 5px;
+      margin-left: 20px;
       cursor: pointer;
+
+      /* 现代化美化 */
+      background-color: #007BFF;
+      /* 使用蓝色作为背景颜色 */
+      color: white;
+      /* 文字颜色为白色 */
+      border: none;
+      /* 移除边框 */
+      border-radius: 8px;
+      /* 圆角边框 */
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      /* 添加柔和的阴影 */
+      transition: all 0.3s ease;
+      /* 添加过渡效果，使变化更加平滑 */
+
+      /* 当鼠标悬停在按钮上时改变背景颜色 */
+      &:hover {
+        background-color: #0056b3;
+        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      /* 当按钮被按下时 */
+      &:active {
+        transform: translateY(1px);
+        /* 模拟按下的效果 */
+        box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+      }
     }
 
     #status {
@@ -82,19 +119,43 @@
 </head>
 
 <body>
-  <h1>Web BLE 电子纸</h1>
+  <h1>YES-LCDxNewFace: Web BLE 电子纸</h1>
 
-  <form>
-    <label for="allDevices">All Devices</label>
-    <input id="allDevices" type="checkbox">
-    <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF">
-    <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic">
-    <input id="name" type="text" size=17 placeholder="Device Name">
-    <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
-    <button>Connect Device</button>
+
+  <div id="bleInfo" class="control-group">
+    <form>
+      <label for="allDevices">All Devices</label>
+      <input id="allDevices" type="checkbox">
+      <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF">
+      <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic">
+      <input id="name" type="text" size=17 placeholder="Device Name">
+      <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
+      <button id="scanBLEBtn">Scan BLE Device</button>
+    </form>
+  </div>
+
+  <br>
+  <div id="wifiInfo" class="control-group">
+    <label>SSID:</label>
+    <input id="ssid" type="text">
+    <label>Password:</label>
+    <input id="password" type="text">
+    <button id="setWifiBtn">Set WiFi</button>
+  </div>
+
+  <br>
+  <div id="setdevice" class="control-group">
+    <label>Model Name</label>
+    <input id="modelSet" type="text">
+    <button id="setdeviceBtn">Set Device</button>
+  </div>
+
+  <br>
+  <div id="deviceInfo" class="control-group">
     <div>
       <label>型号:</label>
-      <input id="model" type="text" readonly>
+      <input id="modelGet" type="text" readonly>
+      <button id="getinfobtn">Get Info</button>
     </div>
     <div>
       <label>宽:</label>
@@ -117,7 +178,7 @@
         <div style="width: 20px; height: 20px; background-color: #FFFFFF;"></div>
       </span>
     </div>
-  </form>
+  </div>
 
   <div id="imagePreviewsContainer">
     <!-- 原图预览 -->
@@ -131,24 +192,27 @@
       <span class="placeholder">📊 量化图</span>
       <img id="quantizedImage" src="" alt="量化图">
     </div>
+
+    <input type="file" id="imageInput" accept="image/*" style="display: none;">
   </div>
 
-  <input type="file" id="imageInput" accept="image/*" style="display: none;">
 
-  <button id="getinfobtn">Get Info</button>
-  <button id="sendbtn">Send Image</button>
-  <button id="quantizedImagebtn">Quantized Image</button>
-  <div style="margin-top: 10px;">
-    <button id="downloadBinBtn">下载 BIN 文件</button>
-    <button id="importBinBtn">导入 BIN 还原预览</button>
+  <div style="margin-top: 10px;" class="control-group">
+    <button id="downloadBinBtn">Export Bin</button>
+    <button id="importBinBtn">Import Bin</button>
     <input type="file" id="fileInput" style="display: none;" accept=".bin">
+    <button id="quantizedImagebtn">Quantized Image</button>
   </div>
+
+  <button id="sendbtn">Send Image</button>
 
   <div id="status">状态：等待操作...</div>
 
 
   <script src="libs/RgbQuant/src/rgbquant.js"></script>
   <script>
+
+
     let deviceConfig = [];
     let outputData = null;
 
@@ -158,24 +222,46 @@
       server: null,
       service: null,
       characteristics: null,
-      ch_tx: null,
-      ch_rx: null,
+      ch_tx: null, // FF05: 写指令
+      ch_rx: null, // FF04: 读数据
+      ch_status: null, // FF01: 接收通知/指示 (Notify/Indicate)
     };
 
     function log(...args) {
       const statusDiv = document.getElementById('status');
-      if (statusDiv) {
-        // 将所有参数转为字符串并用空格连接（模仿 console.log）
-        const message = args.map(arg =>
-          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' ');
 
+      // 生成格式化时间戳 [HH:mm:ss.SSS]
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      const ms = String(now.getMilliseconds()).padStart(3, '0');
+      const timestamp = `[ ${h}:${m}:${s}.${ms}]`; // ← 这里没有多余空格！
+
+      // 安全转换参数（避免循环引用导致的错误）
+      const message = args.map(arg => {
+        try {
+          return typeof arg === 'object' && arg !== null
+            ? JSON.stringify(arg, null, 2)
+            : String(arg);
+        } catch (e) {
+          return `[Unserializable Object:  ${e.message}]`;
+        }
+      }).join(' ');
+
+      const fullMessage = ` ${timestamp}  ${message}`;
+
+      if (statusDiv) {
         const line = document.createElement('div');
-        line.textContent = message;
+        line.textContent = fullMessage;
+        line.style.fontFamily = 'monospace'; // 提升时间戳可读性
+        line.style.fontSize = '0.95em';
         statusDiv.appendChild(line);
-        statusDiv.scrollTop = statusDiv.scrollHeight;
+        statusDiv.scrollTop = statusDiv.scrollHeight; // 自动滚动到底部
       } else {
-        console.warn('未找到 #status 元素');
+        // 回退到控制台（同样带时间戳，便于调试）
+        console.log(fullMessage);
+        console.warn('未找到 #status 元素，日志已输出到控制台');
       }
     }
 
@@ -282,6 +368,12 @@
 
         bleState.ch_tx = await bleState.service.getCharacteristic(0xFF05); // 写
         bleState.ch_rx = await bleState.service.getCharacteristic(0xFF04); // 读
+        bleState.ch_status = await bleState.service.getCharacteristic(0xFF01); // 接收结果反馈
+        console.log("Status 特性 UUID:", bleState.ch_status.uuid);
+
+        await bleState.ch_status.startNotifications();
+        bleState.ch_status.addEventListener('characteristicvaluechanged', handleStatusUpdate);
+        log("✅ 所有蓝牙通道初始化完成 (FF01, FF04, FF05)");
 
         const value = await bleState.ch_rx.readValue();
         log('Char FF04 value: ' + value);
@@ -302,7 +394,7 @@
             devicePalette = jsonObj.palette.split(';').map(c => c.split(',').map(Number));
           }
 
-          document.getElementById('model').value = jsonObj.name || "未知";
+          document.getElementById('modelGet').value = jsonObj.name || "未知";
           document.getElementById('width').value = jsonObj.width || 0;
           document.getElementById('height').value = jsonObj.height || 0;
           document.getElementById('paletteColors').value = jsonObj.bpp || 0;
@@ -339,6 +431,21 @@
       catch (error) {
         log('Argh! ' + error);
       };
+    }
+
+    function handleStatusUpdate(event) {
+      const value = event.target.value;
+      // 假设 ESP32 在保存成功后发送 0x01，失败发送 0x00
+      const status = value.getUint8(0);
+
+      if (status === 0x81) {
+        log("🎯 硬件反馈: 型号设置成功并已保存到 NVS");
+        // 这里可以执行 UI 变绿等操作
+      } else if (status === 0x8F) {
+        log("❌ 硬件反馈: 型号设置失败 (型号无效)");
+      } else {
+        log(`📡 收到未知状态码: 0x${status.toString(16)}`);
+      }
     }
 
     document.getElementById('sendbtn').addEventListener('click', async () => {
@@ -554,13 +661,61 @@
       reader.readAsDataURL(file);
     });
 
-    document.querySelector('form').addEventListener('submit', function (event) {
+    //document.querySelector('form').addEventListener('submit', function (event) {
+    document.getElementById('scanBLEBtn').addEventListener('click', () => {
       event.stopPropagation();
       event.preventDefault();
 
       if (isWebBluetoothEnabled()) {
         console.clear();
         startBle();
+      }
+    });
+
+    document.getElementById('setWifiBtn').addEventListener('click', () => {
+      const ssid = document.getElementById('ssid').value;
+      const password = document.getElementById('password').value;
+
+      if (!ssid || !password) {
+        alert("请先确保WiFi信息已读取（SSID/密码）");
+        return;
+      }
+
+      console.log(`开始设置WiFi: ${ssid} ${password}`);
+      // 发送 BLE 命令设置 WiFi
+      // sendBleCommand('SET_WIFI', `${ssid},${password}`);
+    });
+
+    document.getElementById('setdeviceBtn').addEventListener('click', async () => {
+      const modelName = document.getElementById('modelSet').value.trim();
+
+      if (!modelName) {
+        alert("请先确保型号信息已读取（型号）");
+        return;
+      }
+
+      try {
+        const CMD_SET_EPD_NAME = 0x01;
+        const encoder = new TextEncoder();
+        const nameBytes = encoder.encode(modelName);
+
+        // 3. 构建发送缓冲区: [CMD(1字节), ...名称字节]
+        // 注意：如果你在 ESP32 代码中使用 (const char *)param->write.value + 1
+        // 那么你的蓝牙包必须一次性发完（或者确保分包逻辑正确）
+        const payload = new Uint8Array(1 + nameBytes.length);
+        payload[0] = CMD_SET_EPD_NAME;
+        payload.set(nameBytes, 1);
+
+        log(`📡 正在发送型号设置: ${modelName} (共 ${payload.length} 字节)`);
+
+        // 4. 通过 Web Bluetooth 写入特征值
+        // 使用 writeValueWithResponse 确保写入成功（会等待回复，更稳定）
+        await bleState.ch_tx.writeValueWithResponse(payload);
+
+        log("📨 指令已送达，等待硬件保存结果...");
+      } catch (error) {
+        log(`❌ 发送失败: ${error}`);
+        console.error(error);
       }
     });
 
