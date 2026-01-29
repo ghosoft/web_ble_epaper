@@ -211,7 +211,19 @@
 
   <script src="libs/RgbQuant/src/rgbquant.js"></script>
   <script>
-
+    const EPD_CMD = {
+      CMD_RESET_EPD: 0x00, //reset epd
+      CMD_SET_EPD_NAME: 0x01, //set epd name, 0x01, name_len, name
+      CMD_REPORT_EPD_INFO: 0x02, //report epd info at next read
+      CMD_START_WRITE_DATA: 0x03, //start to write data, 4byte means data len
+      CMD_CURRENT_PACKET_INDEX: 0x04, //current packet index and data
+      CMD_END_WRITE_DATA: 0x05, //end of write data
+      CMD_BATTERY_LEVEL: 0x06, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
+      CMD_SET_WIFI: 0x07, //set wifi ssid and password, 0x07, ssid_len, ssid, pwd_len, pwd
+      CMD_QRCODE_ONIMAGE: 0x08, //show qrcode on image, 1byte, 0:off, 1:on
+      CMD_SHOW_LAST: 0x09, //show last saved data file at startup, 1byte, 0:off, 1:on
+      CMD_SHOW_SDCARD: 0x0A, //show sdcard image at startup, 1byte, 0:off, 1:on
+    };
 
     let deviceConfig = [];
     let outputData = null;
@@ -264,6 +276,13 @@
         console.warn('未找到 #status 元素，日志已输出到控制台');
       }
     }
+
+    const withTimeout = (promise, ms, name) => {
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout: ${name} (${ms}ms)`)), ms)
+      );
+      return Promise.race([promise, timeout]);
+    };
 
     function isWebBluetoothEnabled() {
       if (navigator.bluetooth) {
@@ -354,14 +373,19 @@
         log('with ' + JSON.stringify(options));
         bleState.device = await navigator.bluetooth.requestDevice(options)
 
+        // 监听断开事件（非常重要！如果硬件在连接瞬间断开，这里能捕获）
+        bleState.device.addEventListener('gattserverdisconnected', () => {
+          log('⚠️ 蓝牙连接意外断开！');
+        });
+
         log('Connecting to GATT Server...');
-        bleState.server = await bleState.device.gatt.connect();
+        bleState.server = await withTimeout(bleState.device.gatt.connect(), 25000, 'GATT连接');
 
         log('Getting Service...');
-        bleState.service = await bleState.server.getPrimaryService(serviceUuid);
+        bleState.service = await withTimeout(bleState.server.getPrimaryService(serviceUuid), 25000, '服务获取');
 
         log('Getting Characteristics...');
-        bleState.characteristics = await bleState.service.getCharacteristics();
+        bleState.characteristics = await withTimeout(bleState.service.getCharacteristics(), 5000, '特征获取');
 
         log('> Characteristics: ' +
           bleState.characteristics.map(c => c.uuid).join('\n' + ' '.repeat(19)));
@@ -371,11 +395,11 @@
         bleState.ch_status = await bleState.service.getCharacteristic(0xFF01); // 接收结果反馈
         console.log("Status 特性 UUID:", bleState.ch_status.uuid);
 
-        await bleState.ch_status.startNotifications();
+        await withTimeout(bleState.ch_status.startNotifications(), 5000, '通知启动');
         bleState.ch_status.addEventListener('characteristicvaluechanged', handleStatusUpdate);
         log("✅ 所有蓝牙通道初始化完成 (FF01, FF04, FF05)");
 
-        const value = await bleState.ch_rx.readValue();
+        const value = await withTimeout(bleState.ch_rx.readValue(), 5000, 'FF04 读取');
         log('Char FF04 value: ' + value);
 
         const bytes = new Uint8Array(value.buffer);
@@ -429,7 +453,10 @@
         }
       }
       catch (error) {
-        log('Argh! ' + error);
+        log('❌ 错误: ' + error.message);
+        if (bleState.device && bleState.device.gatt.connected) {
+          bleState.device.gatt.disconnect();
+        }
       };
     }
 
@@ -695,7 +722,7 @@
       }
 
       try {
-        const CMD_SET_EPD_NAME = 0x01;
+
         const encoder = new TextEncoder();
         const nameBytes = encoder.encode(modelName);
 
@@ -703,7 +730,7 @@
         // 注意：如果你在 ESP32 代码中使用 (const char *)param->write.value + 1
         // 那么你的蓝牙包必须一次性发完（或者确保分包逻辑正确）
         const payload = new Uint8Array(1 + nameBytes.length);
-        payload[0] = CMD_SET_EPD_NAME;
+        payload[0] = EPD_CMD.CMD_SET_EPD_NAME;
         payload.set(nameBytes, 1);
 
         log(`📡 正在发送型号设置: ${modelName} (共 ${payload.length} 字节)`);
