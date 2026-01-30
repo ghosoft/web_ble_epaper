@@ -115,6 +115,27 @@
         align-items: center;
       }
     }
+
+    /* 调色板颜色块基础样式及选中状态 */
+    .palette-item {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #ccc;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .palette-item:hover {
+      transform: scale(1.1);
+    }
+
+    .palette-item.selected {
+      border-color: #007BFF;
+      /* 选中时显示蓝色高亮边框 */
+      box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+      outline: 2px solid #007BFF;
+    }
   </style>
 </head>
 
@@ -176,7 +197,9 @@
         <div style="width: 20px; height: 20px; background-color: #00FF00;"></div>
         <div style="width: 20px; height: 20px; background-color: #0000FF;"></div>
         <div style="width: 20px; height: 20px; background-color: #FFFFFF;"></div>
+        <div style="width: 20px; height: 20px; background-color: #000000;"></div>
       </span>
+      <button id="ClearBtn">Clear Screen</button>
     </div>
   </div>
 
@@ -218,11 +241,12 @@
       CMD_START_WRITE_DATA: 0x03, //start to write data, 4byte means data len
       CMD_CURRENT_PACKET_INDEX: 0x04, //current packet index and data
       CMD_END_WRITE_DATA: 0x05, //end of write data
-      CMD_BATTERY_LEVEL: 0x06, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
-      CMD_SET_WIFI: 0x07, //set wifi ssid and password, 0x07, ssid_len, ssid, pwd_len, pwd
-      CMD_QRCODE_ONIMAGE: 0x08, //show qrcode on image, 1byte, 0:off, 1:on
-      CMD_SHOW_LAST: 0x09, //show last saved data file at startup, 1byte, 0:off, 1:on
-      CMD_SHOW_SDCARD: 0x0A, //show sdcard image at startup, 1byte, 0:off, 1:on
+      CMD_EPD_CLEAR: 0x06, //clear epd screen
+      CMD_BATTERY_LEVEL: 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
+      CMD_SET_WIFI: 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
+      CMD_QRCODE_ONIMAGE: 0x09, //show qrcode on image, 1byte, 0:off, 1:on
+      CMD_SHOW_LAST: 0x0A, //show last saved data file at startup, 1byte, 0:off, 1:on
+      CMD_SHOW_SDCARD: 0x0B, //show sdcard image at startup, 1byte, 0:off, 1:on
     };
 
     let deviceConfig = [];
@@ -238,6 +262,8 @@
       ch_rx: null, // FF04: 读数据
       ch_status: null, // FF01: 接收通知/指示 (Notify/Indicate)
     };
+
+    let selectedPaletteIndex = 0; // 默认选中第一个颜色（通常是背景色）
 
     function log(...args) {
       const statusDiv = document.getElementById('status');
@@ -432,15 +458,24 @@
             // 解析调色板字符串 "0,0,0;255,255,255;..."
             const colors = jsonObj.palette.split(';');
 
-            colors.forEach(colorRgb => {
-              // 创建颜色预览方块
+            colors.forEach((colorRgb, index) => {
               const colorBox = document.createElement('div');
-              colorBox.style.width = '20px';
-              colorBox.style.height = '20px';
-              colorBox.style.border = '1px solid #ccc'; // 加个边框防止白色块看不见
-
-              // 将 "0,0,0" 转换为 CSS 的 "rgb(0,0,0)"
+              colorBox.className = 'palette-item'; // 使用新样式
               colorBox.style.backgroundColor = `rgb(${colorRgb})`;
+              colorBox.dataset.index = index; // 存储索引
+
+              // 默认选中第一个
+              if (index === selectedPaletteIndex) {
+                colorBox.classList.add('selected');
+              }
+
+              // 添加点击事件：模拟单选按钮行为
+              colorBox.onclick = () => {
+                document.querySelectorAll('.palette-item').forEach(el => el.classList.remove('selected'));
+                colorBox.classList.add('selected');
+                selectedPaletteIndex = index; // 更新全局选中的索引
+                log(`已选中调色板颜色索引: ${index}`);
+              };
 
               // 添加到容器中
               paletteContainer.appendChild(colorBox);
@@ -523,7 +558,8 @@
 
           // 5. 通过蓝牙发送 (使用 writeValue 或 writeValueWithResponse)
           // 注意：如果设备支持，建议使用 writeValueWithResponse 确保数据到达
-          await bleState.ch_tx.writeValue(packet);
+          //await bleState.ch_tx.writeValue(packet);
+          await bleState.ch_tx.writeValueWithResponse(packet);
 
           // 6. 更新进度 (可选)
           if (i % 10 === 0 || i === totalPackets - 1) {
@@ -743,6 +779,28 @@
       } catch (error) {
         log(`❌ 发送失败: ${error}`);
         console.error(error);
+      }
+    });
+
+    document.getElementById('ClearBtn').addEventListener('click', async () => {
+      if (!bleState.ch_tx) {
+        alert("蓝牙未连接！");
+        return;
+      }
+
+      try {
+        // 构造命令数据包：byte1 为清屏指令 0x06，byte2 为颜色索引
+        const clearCmd = new Uint8Array(2);
+        clearCmd[0] = EPD_CMD.CMD_EPD_CLEAR; // 0x06
+        clearCmd[1] = selectedPaletteIndex;   // 选中的索引值
+
+        log(`📡 发送清屏指令: CMD=0x06, ColorIndex=${selectedPaletteIndex}`);
+
+        // 通过 FF05 特征值发送
+        await bleState.ch_tx.writeValue(clearCmd);
+        log("✅ 清屏指令发送成功");
+      } catch (error) {
+        log(`❌ 清屏指令发送失败: ${error.message}`);
       }
     });
 
