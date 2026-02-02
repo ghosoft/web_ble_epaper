@@ -158,10 +158,14 @@
   <br>
   <div id="wifiInfo" class="control-group">
     <label>SSID:</label>
-    <input id="ssid" type="text">
+    <input id="ssid" type="text" value="Outside">
     <label>Password:</label>
-    <input id="password" type="text">
+    <input id="password" type="text" value="yeslcd123">
     <button id="setWifiBtn">Set WiFi</button>
+    <br>
+    <lable>IP:</lable>
+    <input id="ip" type="text" readonly>
+    <button id="setWifiBtn">Get IP</button>
   </div>
 
   <br>
@@ -221,13 +225,15 @@
 
 
   <div style="margin-top: 10px;" class="control-group">
-    <button id="downloadBinBtn">Export Bin</button>
+    <button id="exportBinBtn">Export Bin</button>
     <button id="importBinBtn">Import Bin</button>
     <input type="file" id="fileInput" style="display: none;" accept=".bin">
     <button id="quantizedImagebtn">Quantized Image</button>
   </div>
 
-  <button id="sendbtn">Send Image</button>
+  <button id="sendBtnBle">Send Image (Bluetooth)</button>
+  <button id="sendBtnIP">Send Image (IP)</button>
+
 
   <div id="status">状态：等待操作...</div>
 
@@ -489,9 +495,8 @@
       }
       catch (error) {
         log('❌ 错误: ' + error.message);
-        if (bleState.device && bleState.device.gatt.connected) {
-          bleState.device.gatt.disconnect();
-        }
+
+        alert("获取设备信息失败，这可能是一个全新设备, 请先设置设备型号, 或者连接中断请重试");
       };
     }
 
@@ -510,7 +515,7 @@
       }
     }
 
-    document.getElementById('sendbtn').addEventListener('click', async () => {
+    document.getElementById('sendBtnBle').addEventListener('click', async () => {
       if (!outputData || outputData.length === 0) {
         alert("请先进行图片量化，生成输出数据！");
         return;
@@ -735,18 +740,48 @@
       }
     });
 
-    document.getElementById('setWifiBtn').addEventListener('click', () => {
+    document.getElementById('setWifiBtn').addEventListener('click', async () => {
       const ssid = document.getElementById('ssid').value;
       const password = document.getElementById('password').value;
 
       if (!ssid || !password) {
-        alert("请先确保WiFi信息已读取（SSID/密码）");
+        alert("请先输入完整的 SSID 和密码");
         return;
       }
 
-      console.log(`开始设置WiFi: ${ssid} ${password}`);
-      // 发送 BLE 命令设置 WiFi
-      // sendBleCommand('SET_WIFI', `${ssid},${password}`);
+      console.log(`开始设置WiFi: ${ssid} / ${password}`);
+
+      try {
+        const encoder = new TextEncoder();
+        const ssidUint8 = encoder.encode(ssid);
+        const pwdUint8 = encoder.encode(password);
+
+        // 协议格式: [CMD] [SSID_LEN] [PWD_LEN] [SSID_DATA] [PWD_DATA]
+        // 总长度 = 1 (命令) + 1 (SSID长) + 1 (密码长) + SSID内容长度 + 密码内容长度
+        const totalLen = 1 + 1 + 1 + ssidUint8.length + pwdUint8.length;
+        const cmdFrame = new Uint8Array(totalLen);
+
+        // 填充数据
+        cmdFrame[0] = 0x08;               // CMD_SET_WIFI (假设为 0x08)
+        cmdFrame[1] = ssidUint8.length;    // SSID 长度
+        cmdFrame[2] = pwdUint8.length;     // 密码长度
+
+        // 拷贝内容
+        cmdFrame.set(ssidUint8, 3);                         // 从索引 3 开始存 SSID
+        cmdFrame.set(pwdUint8, 3 + ssidUint8.length);       // 紧接着存密码
+
+        // 发送 BLE 命令
+        if (bleState.ch_tx) {
+          await bleState.ch_tx.writeValue(cmdFrame);
+          log(`✅ WiFi 指令发送成功 (${totalLen} 字节)`);
+        } else {
+          throw new Error("蓝牙未连接或特征值不可用");
+        }
+
+      } catch (error) {
+        log(`❌ WiFi 指令发送失败: ${error.message}`);
+        console.error(error);
+      }
     });
 
     document.getElementById('setdeviceBtn').addEventListener('click', async () => {
@@ -804,7 +839,7 @@
       }
     });
 
-    document.getElementById('downloadBinBtn').addEventListener('click', () => {
+    document.getElementById('exportBinBtn').addEventListener('click', () => {
       if (!outputData || outputData.length === 0) {
         alert("请先进行图片量化！");
         return;
