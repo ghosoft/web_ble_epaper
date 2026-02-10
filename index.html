@@ -191,8 +191,8 @@
       <input id="height" type="text" readonly>
     </div>
     <div>
-      <label>调色板色彩数:</label>
-      <input id="paletteColors" type="text" readonly>
+      <label>BPP:</label>
+      <input id="BPP" type="text" readonly>
     </div>
     <div>
       <label>调色板颜色列表:</label>
@@ -289,11 +289,11 @@
             ? JSON.stringify(arg, null, 2)
             : String(arg);
         } catch (e) {
-          return `[Unserializable Object:  ${e.message}]`;
+          return `[Unserializable Object: ${e.message}]`;
         }
       }).join(' ');
 
-      const fullMessage = ` ${timestamp}  ${message}`;
+      const fullMessage = ` ${timestamp} ${message}`;
 
       if (statusDiv) {
         const line = document.createElement('div');
@@ -329,11 +329,11 @@
     function printCharPermissions(char, name) {
       const props = char.properties;
       log(`\n--- ${name} (${char.uuid}) ---`);
-      log('Readable:     ', props.read);
+      log('Readable: ', props.read);
       log('Writable (req):', props.write);
       log('Writable (cmd):', props.writeWithoutResponse);
-      log('Notifiable:    ', props.notify);
-      log('Indicatable:   ', props.indicate);
+      log('Notifiable: ', props.notify);
+      log('Indicatable: ', props.indicate);
     }
 
     function convertImageToBytes(img) {
@@ -406,7 +406,7 @@
         bleState.device = await navigator.bluetooth.requestDevice(options)
 
         // 监听断开事件（非常重要！如果硬件在连接瞬间断开，这里能捕获）
-        bleState.device.addEventListener('gattserverdisconnected', () => {
+        bleState.device.addEventListener(' gattserverdisconnected', () => {
           log('⚠️ 蓝牙连接意外断开！');
         });
 
@@ -453,7 +453,7 @@
           document.getElementById('modelGet').value = jsonObj.name || "未知";
           document.getElementById('width').value = jsonObj.width || 0;
           document.getElementById('height').value = jsonObj.height || 0;
-          document.getElementById('paletteColors').value = jsonObj.bpp || 0;
+          document.getElementById('BPP').value = jsonObj.bpp || 0;
 
           // 2. 处理并渲染调色板
           const paletteContainer = document.getElementById('paletteContainer');
@@ -611,11 +611,15 @@
 
       // 2. 初始化 RgbQuant
       const rgbquant = new RgbQuant({
-        palette: devicePalette,
         colors: devicePalette.length,
-        reps: 0,
-        dithKern: "FloydSteinberg",
-        dithSerp: true
+        palette: devicePalette,
+
+        reIndex: false, // 必须为 false 以对应你的硬件索引
+        method: 1, // 强行全局量化
+        dithKern: "Stucki",
+        dithDelta: 0, // 设为 0，强制所有地方都参与抖动凑色
+        dithSerp: true, // 开启蛇形扫描，混合更均匀
+        useCache: false // 关闭缓存，让每个像素都精确计算距离
       });
 
       // 【重要修正】直接传入 imageData 对象，获取像素索引数组
@@ -623,11 +627,11 @@
       const indexData = rgbquant.reduce(imageData, 2);
       // 🔍 打印关键信息进行核对
       console.log("--- 原始索引数据排查 ---");
-      console.log("预期像素总数 (W*H):", 1304 * 984);
+      console.log("预期像素总数 (W*H):", targetWidth * targetHeight);
       console.log("实际 indexData 长度:", indexData.length);
       console.log("前 10 个像素的索引值:", indexData.slice(0, 10));
 
-      if (indexData.length !== 1304 * 984) {
+      if (indexData.length !== targetWidth * targetWidth) {
         console.error("❌ 警告：索引数组长度与分辨率不匹配！可能是 RgbQuant 配置或原图尺寸问题。");
       }
 
@@ -640,14 +644,11 @@
       console.log(`索引数组长度: ${indexData.length}`);
 
       // 3. 严格按像素总数进行打包逻辑
-      if (colorCount <= 2) {
-        // 【1bpp】 8像素 -> 1字节
+      if (colorCount <= 2) { // 【1bpp】 8像素 -> 1字节
         packedData = new Uint8Array(Math.ceil(pixelCount / 8));
         for (let i = 0; i < pixelCount; i++) {
-          const val = indexData[i] & 0x01;
-          const byteIdx = Math.floor(i / 8);
-          const bitShift = 7 - (i % 8);
-          packedData[byteIdx] |= (val << bitShift);
+          const val = indexData[i] & 0x01; const byteIdx = Math.floor(i / 8); const
+            bitShift = 7 - (i % 8); packedData[byteIdx] |= (val << bitShift);
         }
       }
       else if (colorCount <= 4) {
@@ -762,13 +763,13 @@
         const cmdFrame = new Uint8Array(totalLen);
 
         // 填充数据
-        cmdFrame[0] = 0x08;               // CMD_SET_WIFI (假设为 0x08)
-        cmdFrame[1] = ssidUint8.length;    // SSID 长度
-        cmdFrame[2] = pwdUint8.length;     // 密码长度
+        cmdFrame[0] = 0x08; // CMD_SET_WIFI (假设为 0x08)
+        cmdFrame[1] = ssidUint8.length; // SSID 长度
+        cmdFrame[2] = pwdUint8.length; // 密码长度
 
         // 拷贝内容
-        cmdFrame.set(ssidUint8, 3);                         // 从索引 3 开始存 SSID
-        cmdFrame.set(pwdUint8, 3 + ssidUint8.length);       // 紧接着存密码
+        cmdFrame.set(ssidUint8, 3); // 从索引 3 开始存 SSID
+        cmdFrame.set(pwdUint8, 3 + ssidUint8.length); // 紧接着存密码
 
         // 发送 BLE 命令
         if (bleState.ch_tx) {
@@ -827,7 +828,7 @@
         // 构造命令数据包：byte1 为清屏指令 0x06，byte2 为颜色索引
         const clearCmd = new Uint8Array(2);
         clearCmd[0] = EPD_CMD.CMD_EPD_CLEAR; // 0x06
-        clearCmd[1] = selectedPaletteIndex;   // 选中的索引值
+        clearCmd[1] = selectedPaletteIndex; // 选中的索引值
 
         log(`📡 发送清屏指令: CMD=0x06, ColorIndex=${selectedPaletteIndex}`);
 
@@ -929,7 +930,7 @@
         rgba[offset] = rgb[0]; // R
         rgba[offset + 1] = rgb[1]; // G
         rgba[offset + 2] = rgb[2]; // B
-        rgba[offset + 3] = 255;    // A (不透明)
+        rgba[offset + 3] = 255; // A (不透明)
       }
 
       // 4. 将还原后的图像显示到页面
