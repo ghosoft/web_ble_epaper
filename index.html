@@ -190,8 +190,8 @@
     </div>
     <div class="row">
       <lable>IP: </lable>
-      <input id="ip" type="text" readonly>
-      <button id="setWifiBtn">Get IP</button>
+      <input id="ipAddress" type="text" readonly>
+      <button id="getIPBtn">Get IP</button>
     </div>
   </div>
 
@@ -463,6 +463,17 @@
         await withTimeout(bleState.ch_status.startNotifications(), 5000, '通知启动');
         bleState.ch_status.addEventListener('characteristicvaluechanged', handleStatusUpdate);
         log("✅ 所有蓝牙通道初始化完成 (FF01, FF04, FF05)");
+
+        try {
+          const payload = new Uint8Array(1);
+          payload[0] = EPD_CMD.CMD_REPORT_EPD_INFO;
+
+          await bleState.ch_tx.writeValueWithResponse(payload);
+          log("✅ 发送成功");
+        } catch (error) {
+          log(`❌ 发送失败: ${error}`);
+          console.error(error);
+        }
 
         const value = await withTimeout(bleState.ch_rx.readValue(), 5000, 'FF04 读取');
         log('Char FF04 value: ' + value);
@@ -836,6 +847,35 @@
 
       } catch (error) {
         log(`❌ WiFi 指令发送失败: ${error.message}`);
+        console.error(error);
+      }
+    });
+
+    document.getElementById('getIPBtn').addEventListener('click', async () => {
+      try {
+        const payload = new Uint8Array(1);
+        payload[0] = EPD_CMD.CMD_SET_WIFI;
+
+        await bleState.ch_tx.writeValueWithResponse(payload);
+        log("✅ 发送成功");
+
+        // 读取 IP 地址
+        const value = await withTimeout(bleState.ch_rx.readValue(), 5000, '读取IP');
+        log(`IP 地址: ${value}`);
+
+        // 3. 解码 DataView 为 字符串
+        const decoder = new TextDecoder('utf-8');
+        const ipString = decoder.decode(value);
+
+        if (ipString === "0.0.0.0") {
+          log(`⚠️ 尚未获取到 IP，请检查 WiFi 是否连接成功 (当前: ${ipString})`);
+        } else {
+          log(`🌐 获取成功! IP 地址: ${ipString}`);
+          document.getElementById('ipAddress').value = ipString;
+        }
+
+      } catch (error) {
+        log(`❌ 发送失败: ${error}`);
         console.error(error);
       }
     });
