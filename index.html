@@ -14,8 +14,6 @@
       background: #f9f9f9;
     }
 
-
-
     label {
       display: inline-block;
       /* 必须设置，否则 width 无效 */
@@ -26,7 +24,6 @@
       margin-right: 15px;
       /* 解决你提到的：input 离文字太近的问题 */
     }
-
 
     input {
       margin-left: 10px;
@@ -166,7 +163,6 @@
 <body>
   <h1>YES-LCDxNewFace: Web BLE 电子纸</h1>
 
-
   <div id="bleInfo" class="control-group">
     <form>
       <div class="row">
@@ -184,7 +180,7 @@
   </div>
 
   <br>
-  <div id="wifiInfo" class="control-group" hidden=true>
+  <div id="wifiInfo" class="control-group">
     <div class="row">
       <label>SSID:</label>
       <input id="ssid" type="text" value="Outside">
@@ -291,27 +287,6 @@
     };
 
     let LUT_DATA = null;
-
-    // 封装加载逻辑
-    async function loadLUT() {
-      try {
-        const res = await fetch('lut/Spectra6_Render_LUT_Default_v2.bin');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        LUT_DATA = await res.arrayBuffer();
-
-        const view = new Uint8Array(LUT_DATA);
-        const head = Array.from(view.slice(0, 18)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-        log('✅ LUT 加载成功 | 大小:', LUT_DATA.byteLength, '字节 | 前18字节:', head);
-      } catch (err) {
-        log('LUT 加载错误:', err);
-      }
-    }
-
-    // 页面 DOM 就绪后自动触发
-    document.addEventListener('DOMContentLoaded', () => {
-      loadLUT();
-    });
 
     let deviceConfig = [];
     let outputData = null;
@@ -572,6 +547,28 @@
         log(`📡 收到未知状态码: 0x${status.toString(16)}`);
       }
     }
+
+    // 封装加载逻辑
+    async function loadLUT() {
+      try {
+        const res = await fetch('lut/Spectra6_Render_LUT_Default_v2.bin');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        LUT_DATA = await res.arrayBuffer();
+
+        const view = new Uint8Array(LUT_DATA);
+        const head = Array.from(view.slice(0, 18)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        log('✅ LUT 加载成功 | 大小:', LUT_DATA.byteLength, '字节 | 前18字节:', head);
+      } catch (err) {
+        log('LUT 加载错误:', err);
+      }
+    }
+
+    // 页面 DOM 就绪后自动触发
+    document.addEventListener('DOMContentLoaded', () => {
+      loadLUT();
+    });
+
 
     document.getElementById('sendBtnBle').addEventListener('click', async () => {
       if (!outputData || outputData.length === 0) {
