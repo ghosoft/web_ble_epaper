@@ -14,35 +14,42 @@
       background: #f9f9f9;
     }
 
-    .control-group {
-      border: 2px solid #e5e5e5;
-      border-radius: 8px;
-      padding: 8px;
-      margin-bottom: 8px;
-      background-color: #f9f9f9;
+
+
+    label {
+      display: inline-block;
+      /* 必须设置，否则 width 无效 */
+      width: 100px;
+      /* 根据你最长的文字（比如 Model Name）来定宽度 */
+      text-align: right;
+      /* 文字靠右对齐，显得专业 */
+      margin-right: 15px;
+      /* 解决你提到的：input 离文字太近的问题 */
     }
 
+
+    input {
+      margin-left: 10px;
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 100%;
+      max-width: 100px;
+    }
 
     button {
       padding: 10px 20px;
       font-size: 16px;
       margin: 10px 5px;
-      margin-left: 20px;
+      margin-left: auto;
       cursor: pointer;
 
-      /* 现代化美化 */
       background-color: #007BFF;
-      /* 使用蓝色作为背景颜色 */
       color: white;
-      /* 文字颜色为白色 */
       border: none;
-      /* 移除边框 */
       border-radius: 8px;
-      /* 圆角边框 */
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      /* 添加柔和的阴影 */
       transition: all 0.3s ease;
-      /* 添加过渡效果，使变化更加平滑 */
 
       /* 当鼠标悬停在按钮上时改变背景颜色 */
       &:hover {
@@ -58,28 +65,21 @@
       }
     }
 
-    #status {
-      margin-top: 20px;
-      padding: 10px;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      min-height: 50px;
-
-      max-height: 200px;
-      overflow-y: auto;
-      overflow-x: hidden;
-      font-size: 12px;
+    .control-group {
+      border: 2px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+      background-color: #f9f9f9;
     }
 
-    #imagePreviewsContainer {
+    .row {
       display: flex;
-      gap: 16px;
-      /* 两个预览框之间的间距 */
-      margin: 10px 0;
-      flex-wrap: wrap;
-      /* 允许在窄屏时换行 */
-      justify-content: center;
+      /* 开启弹性布局 */
+      align-items: center;
+      /* 垂直居中对齐 */
+      margin-bottom: 15px;
+      /* 每行之间的间距 */
     }
 
     .preview-box {
@@ -136,6 +136,30 @@
       box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
       outline: 2px solid #007BFF;
     }
+
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      min-height: 50px;
+
+      max-height: 200px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      font-size: 12px;
+    }
+
+    #imagePreviewsContainer {
+      display: flex;
+      gap: 16px;
+      /* 两个预览框之间的间距 */
+      margin: 10px 0;
+      flex-wrap: wrap;
+      /* 允许在窄屏时换行 */
+      justify-content: center;
+    }
   </style>
 </head>
 
@@ -145,57 +169,70 @@
 
   <div id="bleInfo" class="control-group">
     <form>
-      <label for="allDevices">All Devices</label>
-      <input id="allDevices" type="checkbox">
-      <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF">
-      <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic">
-      <input id="name" type="text" size=17 placeholder="Device Name">
-      <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
-      <button id="scanBLEBtn">Scan BLE Device</button>
+      <div class="row">
+        <label for="allDevices">All Devices</label>
+        <input id="allDevices" type="checkbox">
+        <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF"
+          hidden=true>
+        <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic"
+          hidden=true>
+        <input id="name" type="text" size=17 placeholder="Device Name" hidden=true>
+        <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
+        <button id="scanBLEBtn">Scan BLE Device</button>
+      </div>
     </form>
   </div>
 
   <br>
-  <div id="wifiInfo" class="control-group">
-    <label>SSID:</label>
-    <input id="ssid" type="text" value="Outside">
-    <label>Password:</label>
-    <input id="password" type="text" value="yeslcd123">
-    <button id="setWifiBtn">Set WiFi</button>
-    <br>
-    <lable>IP:</lable>
-    <input id="ip" type="text" readonly>
-    <button id="setWifiBtn">Get IP</button>
+  <div id="wifiInfo" class="control-group" hidden=true>
+    <div class="row">
+      <label>SSID:</label>
+      <input id="ssid" type="text" value="Outside">
+      <label>Password:</label>
+      <input id="password" type="text" value="yeslcd123">
+      <button id="setWifiBtn">Set WiFi</button>
+    </div>
+    <div class="row">
+      <lable>IP: </lable>
+      <input id="ip" type="text" readonly>
+      <button id="setWifiBtn">Get IP</button>
+    </div>
   </div>
 
   <br>
   <div id="setdevice" class="control-group">
-    <label>Model Name</label>
-    <input id="modelSet" type="text">
-    <button id="setdeviceBtn">Set Device</button>
+    <div class="row">
+      <label>Model Name: </label>
+      <input id="modelSet" type="text">
+      <button id="setdeviceBtn">Set Device</button>
+    </div>
+    <div class="row">
+      <label>工作模式:</label>
+      <select id="woringModeSet">
+        <option value="0">0: 正常模式</option>
+        <option value="1">1: 相册模式</option>
+      </select>
+      <button id="setModeBtn">Set Mode</button>
+    </div>
   </div>
 
   <br>
   <div id="deviceInfo" class="control-group">
-    <div>
+    <div class="row">
       <label>型号:</label>
       <input id="modelGet" type="text" readonly>
       <button id="getinfobtn">Get Info</button>
     </div>
-    <div>
+    <div class="row">
       <label>宽:</label>
       <input id="width" type="text" readonly>
-    </div>
-    <div>
       <label>高:</label>
       <input id="height" type="text" readonly>
-    </div>
-    <div>
       <label>BPP:</label>
       <input id="BPP" type="text" readonly>
     </div>
-    <div>
-      <label>调色板颜色列表:</label>
+    <div class="row">
+      <label>调色板:</label>
       <span id="paletteContainer" style="display: inline-flex; gap: 5px; margin-left: 10px;">
         <div style="width: 20px; height: 20px; background-color: #FF0000;"></div>
         <div style="width: 20px; height: 20px; background-color: #00FF00;"></div>
@@ -250,10 +287,31 @@
       CMD_EPD_CLEAR: 0x06, //clear epd screen
       CMD_BATTERY_LEVEL: 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
       CMD_SET_WIFI: 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
-      CMD_QRCODE_ONIMAGE: 0x09, //show qrcode on image, 1byte, 0:off, 1:on
-      CMD_SHOW_LAST: 0x0A, //show last saved data file at startup, 1byte, 0:off, 1:on
-      CMD_SHOW_SDCARD: 0x0B, //show sdcard image at startup, 1byte, 0:off, 1:on
+      CMD_SET_WORKING_MODE: 0x09, //show qrcode on image, 1byte, 0:off, 1:on
     };
+
+    let LUT_DATA = null;
+
+    // 封装加载逻辑
+    async function loadLUT() {
+      try {
+        const res = await fetch('lut/Spectra6_Render_LUT_Default_v2.bin');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        LUT_DATA = await res.arrayBuffer();
+
+        const view = new Uint8Array(LUT_DATA);
+        const head = Array.from(view.slice(0, 18)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        log('✅ LUT 加载成功 | 大小:', LUT_DATA.byteLength, '字节 | 前18字节:', head);
+      } catch (err) {
+        log('LUT 加载错误:', err);
+      }
+    }
+
+    // 页面 DOM 就绪后自动触发
+    document.addEventListener('DOMContentLoaded', () => {
+      loadLUT();
+    });
 
     let deviceConfig = [];
     let outputData = null;
@@ -573,7 +631,7 @@
           }
 
           // 💡 如果发送过快导致丢包，可以加一个微小的延迟
-          // await new Promise(resolve => setTimeout(resolve, 10)); 
+          // await new Promise(resolve => setTimeout(resolve, 10));
         }
 
         const endCmd = new Uint8Array([0x05]);
@@ -812,6 +870,30 @@
         await bleState.ch_tx.writeValueWithResponse(payload);
 
         log("📨 指令已送达，等待硬件保存结果...");
+      } catch (error) {
+        log(`❌ 发送失败: ${error}`);
+        console.error(error);
+      }
+    });
+
+    document.getElementById('setModeBtn').addEventListener('click', async () => {
+      const modeStr = document.getElementById('woringModeSet').value;
+      if (!modeStr) {
+        alert("请先输入工作模式");
+        return;
+      }
+      const modeInt = parseInt(modeStr);
+
+      log(`当前选择的工作模式: ${modeInt}`);
+
+      try {
+        const payload = new Uint8Array(2);
+        payload[0] = EPD_CMD.CMD_SET_WORKING_MODE;
+        payload[1] = modeInt; // 这里直接存入数字 0 或 1，而不是字符码
+        log(`📡 正在发送工作模式设置: ${modeInt} (十六进制: 0x${payload[0].toString(16)}, 0x${payload[1].toString(16)})`);
+
+        await bleState.ch_tx.writeValueWithResponse(payload);
+        log("✅ 发送成功");
       } catch (error) {
         log(`❌ 发送失败: ${error}`);
         console.error(error);
