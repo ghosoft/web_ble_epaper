@@ -300,6 +300,7 @@
       ch_tx: null, // FF05: 写指令
       ch_rx: null, // FF04: 读数据
       ch_status: null, // FF01: 接收通知/指示 (Notify/Indicate)
+      deviceIp: ""
     };
 
     let selectedPaletteIndex = 0; // 默认选中第一个颜色（通常是背景色）
@@ -656,6 +657,53 @@
       }
     });
 
+    document.getElementById('sendBtnIP').addEventListener('click', async () => {
+      const targetIp = bleState.deviceIp || document.getElementById('ipInput').value;
+
+      if (!targetIp || targetIp === "0.0.0.0") {
+        alert("请先获取有效的设备 IP 地址！");
+        return;
+      }
+
+      // 1. 公用检查逻辑
+      if (!outputData || outputData.length === 0) {
+        alert("请先进行图片量化，生成输出数据！");
+        return;
+      }
+
+      const url = `http://${targetIp}/upload_epd`;
+      log(`🚀 开始通过 WiFi (HTTP) 发送数据，总计 ${outputData.length} 字节...`);
+      const startTime = Date.now();
+
+      try {
+        // 2. 直接发送整个 Uint8Array，不需要循环，不需要分包
+        const response = await fetch(url, {
+          method: 'POST',
+          body: outputData, // 这里的 outputData 直接就是 Uint8Array
+          headers: {
+            // 告诉服务器这是一个二进制流
+            'Content-Type': 'application/octet-stream'
+          },
+          // 设定超时保护（可选）
+          signal: AbortSignal.timeout(15000)
+        });
+
+        if (response.ok) {
+          const result = await response.text();
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+          log(`✅ 发送成功！耗时: ${duration}秒, 服务器回复: ${result}`);
+          alert(`WiFi 传输成功！耗时 ${duration}s`);
+        } else {
+          throw new Error(`服务器响应错误: ${response.status}`);
+        }
+
+      } catch (error) {
+        log(`❌ WiFi 发送失败: ${error.message}`);
+        console.error(error);
+        alert("传输失败，请检查手机是否与 ESP32 在同一 WiFi 下");
+      }
+    });
+
     document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
       // 1. 获取设备要求的宽高
       const targetWidth = parseInt(document.getElementById('width').value);
@@ -871,6 +919,7 @@
           log(`⚠️ 尚未获取到 IP，请检查 WiFi 是否连接成功 (当前: ${ipString})`);
         } else {
           log(`🌐 获取成功! IP 地址: ${ipString}`);
+          bleState.deviceIp = ipString; // ✅ 存入全局变量
           document.getElementById('ipAddress').value = ipString;
         }
 
