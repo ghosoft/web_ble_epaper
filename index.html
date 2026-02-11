@@ -48,6 +48,9 @@
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       transition: all 0.3s ease;
 
+      line-height: 1.2;
+      height: 40px;
+
       /* 当鼠标悬停在按钮上时改变背景颜色 */
       &:hover {
         background-color: #0056b3;
@@ -446,7 +449,7 @@
 
   <button id="sendBtnBle">Send Image (Bluetooth)</button>
   <button id="sendBtnIP">Send Image (IP)</button>
-
+  <button id="saveToFlashBtn" class="btn">保存到 Flash</button>
 
   <div id="status">状态：等待操作...</div>
 
@@ -1350,6 +1353,41 @@
 
       log("✅ 图像反向还原成功");
     });
+
+    document.getElementById('saveToFlashBtn').addEventListener('click', async () => {
+      const targetIp = bleState.deviceIp || document.getElementById('ipInput').value;
+      if (!targetIp || targetIp === "0.0.0.0") {
+        alert("未获取到设备 IP");
+        return;
+      }
+
+      // 生成时间戳 YYYYMMDDhhmmss
+      const now = new Date();
+      const timestamp = now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, '0') +
+        now.getDate().toString().padStart(2, '0') +
+        now.getHours().toString().padStart(2, '0') +
+        now.getMinutes().toString().padStart(2, '0') +
+        now.getSeconds().toString().padStart(2, '0');
+
+      overlay.show();
+      overlay.update("正在持久化...");
+
+      try {
+        const response = await fetch(`http://${targetIp}/save_image?time=${timestamp}`, {
+          method: 'POST'
+        });
+
+        if (response.ok) {
+          await overlay.complete(`已保存: ${timestamp}`);
+        } else {
+          throw new Error("服务器保存失败");
+        }
+      } catch (error) {
+        await overlay.fail(error.message);
+      }
+    });
+
   </script>
 </body>
 
