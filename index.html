@@ -157,10 +157,190 @@
       /* 允许在窄屏时换行 */
       justify-content: center;
     }
+
+    /**************************************************************/
+    /* 弹窗样式 */
+    /**************************************************************/
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      /* 半透明黑背景 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      backdrop-filter: blur(4px);
+      transition: opacity 0.5s ease, visibility 0.5s;
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .loader-container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      position: relative;
+      width: 220px;
+      height: 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .spinner {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      animation: rotateSpinner 1.2s linear infinite;
+      /* 整体旋转 */
+    }
+
+    .dot {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #e0e0e0;
+      /* 默认白色/浅灰 */
+      border-radius: 50%;
+      left: 54px;
+      /* 居中计算 */
+      transform-origin: 6px 60px;
+      /* 以圆心为中心旋转 */
+    }
+
+    /* 布局8个圆圈的位置 */
+    .dot:nth-child(1) {
+      transform: rotate(0deg);
+      background: #2ecc71;
+    }
+
+    /* 唯一的绿点 */
+    .dot:nth-child(2) {
+      transform: rotate(45deg);
+    }
+
+    .dot:nth-child(3) {
+      transform: rotate(90deg);
+    }
+
+    .dot:nth-child(4) {
+      transform: rotate(135deg);
+    }
+
+    .dot:nth-child(5) {
+      transform: rotate(180deg);
+    }
+
+    .dot:nth-child(6) {
+      transform: rotate(225deg);
+    }
+
+    .dot:nth-child(7) {
+      transform: rotate(270deg);
+    }
+
+    .dot:nth-child(8) {
+      transform: rotate(315deg);
+    }
+
+    @keyframes rotateSpinner {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loader-text {
+      text-align: center;
+      font-family: 'Arial', sans-serif;
+      z-index: 10;
+    }
+
+    #loaderProgress {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    #loaderTime {
+      font-size: 14px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    /* 状态类控制 */
+    .loader-container.success {
+      border: 4px solid #2ecc71;
+      background: #f0fff4;
+    }
+
+    .loader-container.warning {
+      border: 4px solid #f1c40f;
+      background: #fffdf0;
+    }
+
+    /* 状态文字提示 */
+    .status-msg {
+      margin-top: 15px;
+      font-size: 16px;
+      font-weight: bold;
+      display: none;
+      /* 初始隐藏 */
+    }
+
+    .success .status-msg {
+      display: block;
+      color: #27ae60;
+    }
+
+    .warning .status-msg {
+      display: block;
+      color: #d4ac0d;
+    }
+
+    /* 成功/失败时停止转圈并隐藏进度，只留时间或结果 */
+    .success .spinner,
+    .warning .spinner {
+      display: none;
+    }
+
+    /**************************************************************/
+    /* 弹窗样式结束 */
+    /**************************************************************/
   </style>
 </head>
 
 <body>
+  <div id="transferOverlay" class="overlay" style="display: none;">
+    <div id="loaderBox" class="loader-container">
+      <div class="spinner">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+      <div class="loader-text">
+        <div id="loaderProgress">0%</div>
+        <div id="loaderTime">0.0s</div>
+      </div>
+      <div id="statusText" class="status-msg"></div>
+    </div>
+  </div>
+
   <h1>YES-LCDxNewFace: Web BLE 电子纸</h1>
 
   <div id="bleInfo" class="control-group">
@@ -304,6 +484,63 @@
     };
 
     let selectedPaletteIndex = 0; // 默认选中第一个颜色（通常是背景色）
+
+    const overlay = {
+      // 使用 getter 模式可以有效避免脚本加载顺序导致的 null 问题
+      get el() { return document.getElementById('transferOverlay'); },
+      get box() { return document.getElementById('loaderBox'); },
+      get progress() { return document.getElementById('loaderProgress'); },
+      get time() { return document.getElementById('loaderTime'); },
+      get status() { return document.getElementById('statusText'); },
+
+      startTime: 0,
+      timerInterval: null,
+
+      show() {
+        if (!this.el || !this.box) {
+          console.error("❌ 找不到遮罩层元素，请检查 HTML ID 是否正确");
+          return;
+        }
+        this.box.className = 'loader-container';
+        this.el.classList.remove('hidden');
+        this.el.style.display = 'flex';
+        this.status.innerText = '';
+        this.progress.style.display = 'block';
+        this.startTime = Date.now();
+
+        this.timerInterval = setInterval(() => {
+          const diff = ((Date.now() - this.startTime) / 1000).toFixed(1);
+          this.time.innerText = `${diff}s`;
+        }, 100);
+      },
+
+      update(percent) {
+        if (this.progress) this.progress.innerText = `${percent}%`;
+      },
+
+      async complete(msg = "传输成功") {
+        clearInterval(this.timerInterval);
+        this.box.classList.add('success');
+        this.status.innerText = `✅ ${msg}`;
+        this.progress.style.display = 'none';
+
+        await new Promise(r => setTimeout(r, 2000));
+        this.el.classList.add('hidden');
+        setTimeout(() => this.el.style.display = 'none', 500);
+      },
+
+      async fail(msg = "传输失败") {
+        clearInterval(this.timerInterval);
+        if (!this.box || !this.el) return;
+        this.box.classList.add('warning');
+        this.status.innerText = `⚠️ ${msg}`;
+        this.progress.style.display = 'none';
+
+        await new Promise(r => setTimeout(r, 2000));
+        this.el.classList.add('hidden');
+        setTimeout(() => this.el.style.display = 'none', 500);
+      }
+    };
 
     function log(...args) {
       const statusDiv = document.getElementById('status');
@@ -610,7 +847,7 @@
         log(`📡 发送开始指令: 总大小 ${totalBytes} 字节`);
         await bleState.ch_tx.writeValue(startCmd);
 
-        //time.sleep(0.05);
+        overlay.show(); // 👈 显示弹窗
 
         for (let i = 0; i < totalPackets; i++) {
           const start = i * CHUNK_SIZE;
@@ -639,6 +876,9 @@
             log(`进度: ${progress}% (${i + 1}/${totalPackets})`);
           }
 
+          const progress = ((i + 1) / totalPackets * 100).toFixed(1);
+          overlay.update(progress); // 👈 更新进度
+
           // 💡 如果发送过快导致丢包，可以加一个微小的延迟
           // await new Promise(resolve => setTimeout(resolve, 10));
         }
@@ -648,12 +888,11 @@
         await bleState.ch_tx.writeValue(endCmd);
 
         log("✅ 所有数据包发送完成！");
-        alert("传输成功！");
-
+        await overlay.complete("同步成功"); // 👈 替换掉之前的 hide
       } catch (error) {
         log(`❌ 发送失败: ${error.message}`);
         console.error(error);
-        alert("传输中断，请检查蓝牙连接");
+        await overlay.fail("蓝牙异常"); // 👈 替换掉之前的 hide
       }
     });
 
@@ -675,6 +914,9 @@
       log(`🚀 开始通过 WiFi (HTTP) 发送数据，总计 ${outputData.length} 字节...`);
       const startTime = Date.now();
 
+      overlay.show(); // 👈 显示弹窗
+      overlay.update("..."); // WiFi 没有中间进度，显示省略号
+
       try {
         // 2. 直接发送整个 Uint8Array，不需要循环，不需要分包
         const response = await fetch(url, {
@@ -685,22 +927,21 @@
             'Content-Type': 'application/octet-stream'
           },
           // 设定超时保护（可选）
-          signal: AbortSignal.timeout(15000)
+          signal: AbortSignal.timeout(30000)
         });
 
         if (response.ok) {
           const result = await response.text();
           const duration = ((Date.now() - startTime) / 1000).toFixed(2);
           log(`✅ 发送成功！耗时: ${duration}秒, 服务器回复: ${result}`);
-          alert(`WiFi 传输成功！耗时 ${duration}s`);
         } else {
           throw new Error(`服务器响应错误: ${response.status}`);
         }
-
+        await overlay.complete("同步成功"); // 👈 替换掉之前的 hide
       } catch (error) {
         log(`❌ WiFi 发送失败: ${error.message}`);
         console.error(error);
-        alert("传输失败，请检查手机是否与 ESP32 在同一 WiFi 下");
+        await overlay.fail("WiFi 异常"); // 👈 替换掉之前的 hide
       }
     });
 
