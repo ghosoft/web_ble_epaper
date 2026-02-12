@@ -456,6 +456,11 @@
 
   <script src="libs/RgbQuant/src/rgbquant.js"></script>
   <script>
+    // 1. 定义页面元素
+    const ssidInput = document.getElementById('ssid');
+    const passwordInput = document.getElementById('password');
+    const setBtn = document.getElementById('setWifiBtn');
+
     const EPD_CMD = {
       CMD_RESET_EPD: 0x00, //reset epd
       CMD_SET_EPD_NAME: 0x01, //set epd name, 0x01, name_len, name
@@ -543,6 +548,14 @@
         this.el.classList.add('hidden');
         setTimeout(() => this.el.style.display = 'none', 500);
       }
+    };
+
+    window.onload = function () {
+      const savedSSID = localStorage.getItem('saved_ssid');
+      const savedPass = localStorage.getItem('saved_password');
+
+      if (savedSSID) ssidInput.value = savedSSID;
+      if (savedPass) passwordInput.value = savedPass;
     };
 
     function log(...args) {
@@ -1102,6 +1115,10 @@
     document.getElementById('setWifiBtn').addEventListener('click', async () => {
       const ssid = document.getElementById('ssid').value;
       const password = document.getElementById('password').value;
+
+      // 存储到 localStorage
+      localStorage.setItem('saved_ssid', ssid);
+      localStorage.setItem('saved_password', password);
 
       if (!ssid || !password) {
         alert("请先输入完整的 SSID 和密码");
