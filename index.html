@@ -829,6 +829,33 @@
       }
     }
 
+    function applyLutTransformation(rgbData, lutBuffer) {
+      if (!lutBuffer || lutBuffer.byteLength < 0xC0012) {
+        console.warn("LUT 数据无效，跳过转换");
+        return rgbData;
+      }
+
+      const g_lut_data = new Uint8Array(lutBuffer, 0x12); // 从 0x12 偏移量开始是 LUT 数据
+      const transformedData = new Uint8Array(rgbData.length);
+
+      for (let i = 0; i < rgbData.length; i += 3) {
+        const r = rgbData[i];
+        const g = rgbData[i + 1];
+        const b = rgbData[i + 2];
+
+        // 对应 C 语言中的索引计算: ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3
+        // 注意：JS 的位运算会处理成 32 位整数
+        const lutIdx = ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3;
+
+        // 根据 C 代码逻辑：LUT 存储格式为 BGR，输出需转回 RGB
+        transformedData[i] = g_lut_data[lutIdx + 2]; // R
+        transformedData[i + 1] = g_lut_data[lutIdx + 1]; // G
+        transformedData[i + 2] = g_lut_data[lutIdx + 0]; // B
+      }
+
+      return transformedData;
+    }
+
     // 页面 DOM 就绪后自动触发
     document.addEventListener('DOMContentLoaded', () => {
       loadLUT();
@@ -979,6 +1006,29 @@
 
       // 获取完整的 ImageData 对象
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data; // 这里的 data 是 [R,G,B,A, R,G,B,A...]
+
+      // 假设 LUT_DATA 是你之前加载的 .bin 文件的 ArrayBuffer
+      if (typeof LUT_DATA !== 'undefined' && LUT_DATA) {
+        console.log("正在应用 LUT 色彩校正...");
+        const g_lut_data = new Uint8Array(LUT_DATA, 0x12); // 跳过 18 字节文件头
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
+          // 按照 C 文件中的索引公式：
+          // lut_idx = ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3
+          const lutIdx = ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3;
+
+          // 从 LUT 中取出的数据通常是 BGR 顺序
+          data[i] = g_lut_data[lutIdx + 2]; // 转换后的 R
+          data[i + 1] = g_lut_data[lutIdx + 1]; // 转换后的 G
+          data[i + 2] = g_lut_data[lutIdx + 0]; // 转换后的 B
+          // Alpha 通道 data[i+3] 保持不变
+        }
+      }
 
       // 2. 初始化 RgbQuant
       const rgbquant = new RgbQuant({
