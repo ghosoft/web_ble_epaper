@@ -323,136 +323,142 @@
 </head>
 
 <body>
-  <div id="transferOverlay" class="overlay" style="display: none;">
-    <div id="loaderBox" class="loader-container">
-      <div class="spinner">
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
+  <div id="mainContainer">
+    <div id="transferOverlay" class="overlay" style="display: none;">
+      <div id="loaderBox" class="loader-container">
+        <div class="spinner">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+        <div class="loader-text">
+          <div id="loaderProgress">0%</div>
+          <div id="loaderTime">0.0s</div>
+        </div>
+        <div id="statusText" class="status-msg"></div>
       </div>
-      <div class="loader-text">
-        <div id="loaderProgress">0%</div>
-        <div id="loaderTime">0.0s</div>
-      </div>
-      <div id="statusText" class="status-msg"></div>
     </div>
-  </div>
 
-  <h1>YES-LCDxNewFace: Web BLE 电子纸</h1>
+    <h1>YES-LCDxNewFace: Web BLE 电子纸</h1>
 
-  <div id="bleInfo" class="control-group">
-    <form>
+    <div id="bleInfo" class="control-group">
+      <form>
+        <div class="row">
+          <label for="allDevices">All Devices</label>
+          <input id="allDevices" type="checkbox">
+          <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF"
+            hidden=true>
+          <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic"
+            hidden=true>
+          <input id="name" type="text" size=17 placeholder="Device Name" hidden=true>
+          <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
+          <button id="scanBLEBtn">Scan BLE Device</button>
+        </div>
+      </form>
+    </div>
+
+    <br>
+    <div id="wifiInfo" class="control-group">
       <div class="row">
-        <label for="allDevices">All Devices</label>
-        <input id="allDevices" type="checkbox">
-        <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service" value="0x00FF"
-          hidden=true>
-        <input id="characteristic" type="text" size=17 list="services" placeholder="Bluetooth Characteristic"
-          hidden=true>
-        <input id="name" type="text" size=17 placeholder="Device Name" hidden=true>
-        <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix" value="YES">
-        <button id="scanBLEBtn">Scan BLE Device</button>
+        <label>SSID:</label>
+        <input id="ssid" type="text" value="Outside">
+        <label>Password:</label>
+        <input id="password" type="text" value="yeslcd123">
+        <button id="setWifiBtn">Set WiFi</button>
       </div>
-    </form>
+      <div class="row">
+        <lable>IP: </lable>
+        <input id="ipAddress" type="text" readonly>
+        <button id="getIPBtn">Get IP</button>
+      </div>
+    </div>
+
+    <br>
+    <div id="setdevice" class="control-group">
+      <div class="row">
+        <label>Model Name: </label>
+        <input id="modelSet" type="text">
+        <button id="setdeviceBtn">Set Device</button>
+      </div>
+      <div class="row">
+        <label>工作模式:</label>
+        <select id="woringModeSet">
+          <option value="0">0: 正常模式</option>
+          <option value="1">1: 相册模式</option>
+        </select>
+        <button id="setModeBtn">Set Mode</button>
+      </div>
+    </div>
+
+    <br>
+    <div id="deviceInfo" class="control-group">
+      <div class="row">
+        <label>型号:</label>
+        <input id="modelGet" type="text" readonly>
+        <button id="getinfobtn">Get Info</button>
+      </div>
+      <div class="row">
+        <label>宽:</label>
+        <input id="width" type="text" readonly>
+        <label>高:</label>
+        <input id="height" type="text" readonly>
+        <label>BPP:</label>
+        <input id="BPP" type="text" readonly>
+      </div>
+      <div class="row">
+        <label>调色板:</label>
+        <span id="paletteContainer" style="display: inline-flex; gap: 5px; margin-left: 10px;">
+          <div style="width: 20px; height: 20px; background-color: #FF0000;"></div>
+          <div style="width: 20px; height: 20px; background-color: #00FF00;"></div>
+          <div style="width: 20px; height: 20px; background-color: #0000FF;"></div>
+          <div style="width: 20px; height: 20px; background-color: #FFFFFF;"></div>
+          <div style="width: 20px; height: 20px; background-color: #000000;"></div>
+        </span>
+        <button id="ClearBtn">Clear Screen</button>
+      </div>
+    </div>
+
+    <div id="imagePreviewsContainer">
+      <!-- 原图预览 -->
+      <div class="preview-box">
+        <span class="placeholder">📷 原图</span>
+        <img id="previewImage" src="" alt="原图">
+      </div>
+
+      <!-- 量化图预览 -->
+      <div class="preview-box">
+        <span class="placeholder">📊 量化图</span>
+        <img id="quantizedImage" src="" alt="量化图">
+      </div>
+
+      <input type="file" id="imageInput" accept="image/*" style="display: none;">
+    </div>
+
+
+    <div style="margin-top: 10px;" class="control-group">
+      <button id="exportBinBtn">Export Bin</button>
+      <button id="importBinBtn">Import Bin</button>
+      <input type="file" id="fileInput" style="display: none;" accept=".bin">
+      <button id="quantizedImagebtn">Quantized Image</button>
+      <label
+        style="display: flex; align-items: center; cursor: pointer; width: auto; text-align: left; margin-right: 0;">
+        <input type="checkbox" id="useLutCheckbox" style="width: 18px; height: 18px; margin-right: 5px;" checked>
+        色彩增强 (LUT)
+      </label>
+    </div>
+
+    <button id="sendBtnBle">Send Image (Bluetooth)</button>
+    <button id="sendBtnIP">Send Image (IP)</button>
+    <button id="saveToFlashBtn" class="btn">保存到 Flash</button>
+    <button id="clearFlashBtn" class="btn" style="background-color: #e74c3c;">清空 Flash 图片</button>
+
+    <div id="status">状态：等待操作...</div>
   </div>
-
-  <br>
-  <div id="wifiInfo" class="control-group">
-    <div class="row">
-      <label>SSID:</label>
-      <input id="ssid" type="text" value="Outside">
-      <label>Password:</label>
-      <input id="password" type="text" value="yeslcd123">
-      <button id="setWifiBtn">Set WiFi</button>
-    </div>
-    <div class="row">
-      <lable>IP: </lable>
-      <input id="ipAddress" type="text" readonly>
-      <button id="getIPBtn">Get IP</button>
-    </div>
-  </div>
-
-  <br>
-  <div id="setdevice" class="control-group">
-    <div class="row">
-      <label>Model Name: </label>
-      <input id="modelSet" type="text">
-      <button id="setdeviceBtn">Set Device</button>
-    </div>
-    <div class="row">
-      <label>工作模式:</label>
-      <select id="woringModeSet">
-        <option value="0">0: 正常模式</option>
-        <option value="1">1: 相册模式</option>
-      </select>
-      <button id="setModeBtn">Set Mode</button>
-    </div>
-  </div>
-
-  <br>
-  <div id="deviceInfo" class="control-group">
-    <div class="row">
-      <label>型号:</label>
-      <input id="modelGet" type="text" readonly>
-      <button id="getinfobtn">Get Info</button>
-    </div>
-    <div class="row">
-      <label>宽:</label>
-      <input id="width" type="text" readonly>
-      <label>高:</label>
-      <input id="height" type="text" readonly>
-      <label>BPP:</label>
-      <input id="BPP" type="text" readonly>
-    </div>
-    <div class="row">
-      <label>调色板:</label>
-      <span id="paletteContainer" style="display: inline-flex; gap: 5px; margin-left: 10px;">
-        <div style="width: 20px; height: 20px; background-color: #FF0000;"></div>
-        <div style="width: 20px; height: 20px; background-color: #00FF00;"></div>
-        <div style="width: 20px; height: 20px; background-color: #0000FF;"></div>
-        <div style="width: 20px; height: 20px; background-color: #FFFFFF;"></div>
-        <div style="width: 20px; height: 20px; background-color: #000000;"></div>
-      </span>
-      <button id="ClearBtn">Clear Screen</button>
-    </div>
-  </div>
-
-  <div id="imagePreviewsContainer">
-    <!-- 原图预览 -->
-    <div class="preview-box">
-      <span class="placeholder">📷 原图</span>
-      <img id="previewImage" src="" alt="原图">
-    </div>
-
-    <!-- 量化图预览 -->
-    <div class="preview-box">
-      <span class="placeholder">📊 量化图</span>
-      <img id="quantizedImage" src="" alt="量化图">
-    </div>
-
-    <input type="file" id="imageInput" accept="image/*" style="display: none;">
-  </div>
-
-
-  <div style="margin-top: 10px;" class="control-group">
-    <button id="exportBinBtn">Export Bin</button>
-    <button id="importBinBtn">Import Bin</button>
-    <input type="file" id="fileInput" style="display: none;" accept=".bin">
-    <button id="quantizedImagebtn">Quantized Image</button>
-  </div>
-
-  <button id="sendBtnBle">Send Image (Bluetooth)</button>
-  <button id="sendBtnIP">Send Image (IP)</button>
-  <button id="saveToFlashBtn" class="btn">保存到 Flash</button>
-  <button id="clearFlashBtn" class="btn" style="background-color: #e74c3c;">清空 Flash 图片</button>
-
-  <div id="status">状态：等待操作...</div>
-
 
   <script src="libs/RgbQuant/src/rgbquant.js"></script>
   <script>
@@ -475,6 +481,7 @@
     };
 
     let LUT_DATA = null;
+    let useLut = true;
 
     let deviceConfig = [];
     let outputData = null;
@@ -970,7 +977,7 @@
             'Content-Type': 'application/octet-stream'
           },
           // 设定超时保护（可选）
-          signal: AbortSignal.timeout(30000)
+          signal: AbortSignal.timeout(300000)
         });
 
         if (response.ok) {
@@ -1009,7 +1016,7 @@
       const data = imageData.data; // 这里的 data 是 [R,G,B,A, R,G,B,A...]
 
       // 假设 LUT_DATA 是你之前加载的 .bin 文件的 ArrayBuffer
-      if (typeof LUT_DATA !== 'undefined' && LUT_DATA) {
+      if (useLut && typeof LUT_DATA !== 'undefined' && LUT_DATA) {
         console.log("正在应用 LUT 色彩校正...");
         const g_lut_data = new Uint8Array(LUT_DATA, 0x12); // 跳过 18 字节文件头
 
@@ -1124,6 +1131,12 @@
       const quantizedImage = document.getElementById('quantizedImage');
       quantizedImage.src = canvas.toDataURL();
       quantizedImage.style.display = 'block';
+    });
+
+    // 监听开关变化
+    document.getElementById('useLutCheckbox').addEventListener('change', (e) => {
+      useLut = e.target.checked;
+      log(`LUT 状态更改为: ${config.useLut}`);
     });
 
     // 点击占位符或文字区域时触发文件选择
