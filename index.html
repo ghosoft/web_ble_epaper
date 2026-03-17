@@ -1264,48 +1264,100 @@
       const ssid = document.getElementById('ssid').value;
       const password = document.getElementById('password').value;
 
-      // 存储到 localStorage
-      localStorage.setItem('saved_ssid', ssid);
-      localStorage.setItem('saved_password', password);
-
       if (!ssid || !password) {
         alert("请先输入完整的 SSID 和密码");
         return;
       }
 
-      console.log(`开始设置WiFi: ${ssid} / ${password}`);
+      if (!bleState.ch_tx || !bleState.ch_rx) {
+        alert("蓝牙未连接");
+        return;
+      }
 
+      // 存储到 localStorage
+      localStorage.setItem('saved_ssid', ssid);
+      localStorage.setItem('saved_password', password);
+
+      // 1. 发送 WiFi 配置
       try {
         const encoder = new TextEncoder();
         const ssidUint8 = encoder.encode(ssid);
         const pwdUint8 = encoder.encode(password);
 
-        // 协议格式: [CMD] [SSID_LEN] [PWD_LEN] [SSID_DATA] [PWD_DATA]
-        // 总长度 = 1 (命令) + 1 (SSID长) + 1 (密码长) + SSID内容长度 + 密码内容长度
         const totalLen = 1 + 1 + 1 + ssidUint8.length + pwdUint8.length;
         const cmdFrame = new Uint8Array(totalLen);
+        cmdFrame[0] = 0x08;
+        cmdFrame[1] = ssidUint8.length;
+        cmdFrame[2] = pwdUint8.length;
+        cmdFrame.set(ssidUint8, 3);
+        cmdFrame.set(pwdUint8, 3 + ssidUint8.length);
 
-        // 填充数据
-        cmdFrame[0] = 0x08; // CMD_SET_WIFI (假设为 0x08)
-        cmdFrame[1] = ssidUint8.length; // SSID 长度
-        cmdFrame[2] = pwdUint8.length; // 密码长度
-
-        // 拷贝内容
-        cmdFrame.set(ssidUint8, 3); // 从索引 3 开始存 SSID
-        cmdFrame.set(pwdUint8, 3 + ssidUint8.length); // 紧接着存密码
-
-        // 发送 BLE 命令
-        if (bleState.ch_tx) {
-          await bleState.ch_tx.writeValue(cmdFrame);
-          log(`✅ WiFi 指令发送成功 (${totalLen} 字节)`);
-        } else {
-          throw new Error("蓝牙未连接或特征值不可用");
-        }
-
+        await bleState.ch_tx.writeValue(cmdFrame);
+        log(`✅ WiFi 指令发送成功`);
       } catch (error) {
         log(`❌ WiFi 指令发送失败: ${error.message}`);
-        console.error(error);
+        return;
       }
+
+      // 2. 显示等待弹窗，开始轮询 IP
+      overlay.show();
+      overlay.update("正在连接 WiFi，请稍候...");
+
+      const POLL_INTERVAL = 2000; // 每2秒查一次
+      const POLL_TIMEOUT = 60000; // 最多等30秒
+      const startTime = Date.now();
+
+      const pollIp = async () => {
+        // 超时处理
+        if (Date.now() - startTime > POLL_TIMEOUT) {
+          await overlay.fail("wifi连接超时");
+          log("❌ WiFi 连接超时，请检查 SSID 和密码是否正确");
+          return;
+        }
+
+        try {
+          const payload = new Uint8Array([EPD_CMD.CMD_SET_WIFI]);
+          await bleState.ch_tx.writeValueWithResponse(payload);
+
+          const value = await withTimeout(bleState.ch_rx.readValue(), 3000, '读取IP');
+          console.log(value);
+
+          const ipString = new TextDecoder('utf-8').decode(value);
+          console.log(ipString);
+
+          if (ipString && ipString.trim() !== "0.0.0.0") {
+            // ✅ 连接成功
+            await overlay.complete(`WiFi 连接成功！IP 地址: ${ipString.trim()}`);
+            try {
+              bleState.deviceIp = ipString.trim();
+              document.getElementById('ipAddress').value = ipString.trim();
+              log(`🌐 WiFi 连接成功！IP 地址: ${ipString.trim()}`);
+            } catch (e) {
+              console.error("更新UI失败:", e);
+            }
+
+            return;
+          } else {
+            // 还没拿到 IP，继续等
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            await overlay.update(`正在连接 WiFi... (${elapsed}s)`);
+            setTimeout(pollIp, POLL_INTERVAL);
+          }
+        } catch (e) {
+          console.warn("轮询读取失败:", e);
+          if (Date.now() - startTime > POLL_TIMEOUT) {
+            await overlay.fail("wifi连接超时");
+            return;
+          }
+
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          overlay.update(`等待设备响应... (${elapsed}s)`);
+          setTimeout(pollIp, POLL_INTERVAL);
+        }
+      };
+
+      // 延迟1秒再开始轮询，给设备一点启动时间
+      setTimeout(pollIp, 2000);
     });
 
     document.getElementById('getIPBtn').addEventListener('click', async () => {
