@@ -1030,7 +1030,8 @@
       }
     });
 
-    document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
+    //
+    async function quantizeImage() {
       // 1. 获取设备要求的宽高
       const targetWidth = parseInt(document.getElementById('width').value);
       const targetHeight = parseInt(document.getElementById('height').value);
@@ -1167,6 +1168,13 @@
       const quantizedImage = document.getElementById('quantizedImage');
       quantizedImage.src = canvas.toDataURL();
       quantizedImage.style.display = 'block';
+    };
+
+    document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
+      const result = await quantizeImage();
+      if (result) {
+        outputData = result;
+      }
     });
 
     // 监听开关变化
@@ -1196,6 +1204,13 @@
         const box = img.closest('.preview-box');
         const placeholder = box.querySelector('.placeholder');
         if (placeholder) placeholder.style.display = 'none';
+        // 图片加载完成后自动量化
+        img.onload = async () => {
+          const result = await quantizeImage();
+          if (result) {
+            outputData = result;
+          }
+        };
       };
       reader.readAsDataURL(file);
     });
