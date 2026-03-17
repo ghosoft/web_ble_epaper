@@ -137,17 +137,33 @@
     }
 
     #status {
-      margin-top: 20px;
-      padding: 10px;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      min-height: 50px;
+      /* 核心：固定在窗口底部 */
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      /* 撑满左右宽度 */
+      z-index: 9999;
+      /* 确保在所有元素最上层 */
 
-      max-height: 200px;
+      /* 样式优化 */
+      margin: 0;
+      /* 移除外边距，防止留缝 */
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.95);
+      /* 半透明背景，能看到底下的内容 */
+      border-top: 1px solid #ddd;
+      /* 只需要顶部边框 */
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+      /* 添加阴影，提升层次感 */
+
+      /* 尺寸控制 */
+      height: 150px;
+      /* 建议固定高度，或者使用 max-height */
       overflow-y: auto;
-      overflow-x: hidden;
       font-size: 12px;
+      box-sizing: border-box;
+      /* 确保 padding 不撑开总宽度 */
     }
 
     #imagePreviewsContainer {
@@ -457,6 +473,16 @@
     <button id="saveToFlashBtn" class="btn">保存到 Flash</button>
     <button id="clearFlashBtn" class="btn" style="background-color: #e74c3c;">清空 Flash 图片</button>
 
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+    <br>
+
     <div id="status">状态：等待操作...</div>
   </div>
 
@@ -725,84 +751,93 @@
         bleState.ch_status.addEventListener('characteristicvaluechanged', handleStatusUpdate);
         log("✅ 所有蓝牙通道初始化完成 (FF01, FF04, FF05)");
 
-        try {
-          const payload = new Uint8Array(1);
-          payload[0] = EPD_CMD.CMD_REPORT_EPD_INFO;
-
-          await bleState.ch_tx.writeValueWithResponse(payload);
-          log("✅ 发送成功");
-        } catch (error) {
-          log(`❌ 发送失败: ${error}`);
-          console.error(error);
-        }
-
-        const value = await withTimeout(bleState.ch_rx.readValue(), 5000, 'FF04 读取');
-        log('Char FF04 value: ' + value);
-
-        const bytes = new Uint8Array(value.buffer);
-        log(`✅ FF04 读取成功，共 ${bytes.length} 字节:`);
-        log('数据（十六进制）:', bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
-
-        try {
-          const jsonString = new TextDecoder().decode(value);
-          log('数据（JSON 文本）:', `"${jsonString}"`);
-
-          // 可选：解析为 JS 对象并美化打印
-          const jsonObj = JSON.parse(jsonString);
-          log('数据（解析后对象）:', JSON.stringify(jsonObj, null, 2));
-
-          if (jsonObj.palette) {
-            devicePalette = jsonObj.palette.split(';').map(c => c.split(',').map(Number));
-          }
-
-          document.getElementById('modelGet').value = jsonObj.name || "未知";
-          document.getElementById('width').value = jsonObj.width || 0;
-          document.getElementById('height').value = jsonObj.height || 0;
-          document.getElementById('BPP').value = jsonObj.bpp || 0;
-
-          // 2. 处理并渲染调色板
-          const paletteContainer = document.getElementById('paletteContainer');
-          if (paletteContainer && jsonObj.palette) {
-            // 清空旧的颜色方块
-            paletteContainer.innerHTML = '';
-
-            // 解析调色板字符串 "0,0,0;255,255,255;..."
-            const colors = jsonObj.palette.split(';');
-
-            colors.forEach((colorRgb, index) => {
-              const colorBox = document.createElement('div');
-              colorBox.className = 'palette-item'; // 使用新样式
-              colorBox.style.backgroundColor = `rgb(${colorRgb})`;
-              colorBox.dataset.index = index; // 存储索引
-
-              // 默认选中第一个
-              if (index === selectedPaletteIndex) {
-                colorBox.classList.add('selected');
-              }
-
-              // 添加点击事件：模拟单选按钮行为
-              colorBox.onclick = () => {
-                document.querySelectorAll('.palette-item').forEach(el => el.classList.remove('selected'));
-                colorBox.classList.add('selected');
-                selectedPaletteIndex = index; // 更新全局选中的索引
-                log(`已选中调色板颜色索引: ${index}`);
-              };
-
-              // 添加到容器中
-              paletteContainer.appendChild(colorBox);
-            });
-          }
-
-          log('✅ UI 信息更新完成');
-        } catch (e) {
-          log('⚠️ 数据不是有效 JSON:', e.message);
-        }
       }
       catch (error) {
         log('❌ 错误: ' + error.message);
 
-        alert("获取设备信息失败，这可能是一个全新设备, 请先设置设备型号, 或者连接中断请重试");
+        alert("获取蓝牙服务失败，请检查服务UUID是否正确");
+        return;
       };
+
+      try {
+        const payload = new Uint8Array(1);
+        payload[0] = EPD_CMD.CMD_REPORT_EPD_INFO;
+
+        await bleState.ch_tx.writeValueWithResponse(payload);
+        log("✅ 获取信息命令发送成功");
+      } catch (error) {
+        log(`❌ 获取信息命令发送失败: ${error}`);
+        console.error(error);
+        return;
+      }
+
+      const value = await withTimeout(bleState.ch_rx.readValue(), 5000, 'FF04 读取');
+      log('Char FF04 value: ' + value);
+
+      const bytes = new Uint8Array(value.buffer);
+      log(`✅ FF04 读取成功，共 ${bytes.length} 字节:`);
+      log('数据（十六进制）:', bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+      if (bytes.length === 0) {
+        alert('❌ 读取到空数据, 可能是新设备, 需要先设置型号');
+        return;
+      }
+
+      try {
+        const jsonString = new TextDecoder().decode(value);
+        log('数据（JSON 文本）:', `"${jsonString}"`);
+
+        // 可选：解析为 JS 对象并美化打印
+        const jsonObj = JSON.parse(jsonString);
+        log('数据（解析后对象）:', JSON.stringify(jsonObj, null, 2));
+
+        if (jsonObj.palette) {
+          devicePalette = jsonObj.palette.split(';').map(c => c.split(',').map(Number));
+        }
+
+        document.getElementById('modelGet').value = jsonObj.name || "未知";
+        document.getElementById('width').value = jsonObj.width || 0;
+        document.getElementById('height').value = jsonObj.height || 0;
+        document.getElementById('BPP').value = jsonObj.bpp || 0;
+
+        // 2. 处理并渲染调色板
+        const paletteContainer = document.getElementById('paletteContainer');
+        if (paletteContainer && jsonObj.palette) {
+          // 清空旧的颜色方块
+          paletteContainer.innerHTML = '';
+
+          // 解析调色板字符串 "0,0,0;255,255,255;..."
+          const colors = jsonObj.palette.split(';');
+
+          colors.forEach((colorRgb, index) => {
+            const colorBox = document.createElement('div');
+            colorBox.className = 'palette-item'; // 使用新样式
+            colorBox.style.backgroundColor = `rgb(${colorRgb})`;
+            colorBox.dataset.index = index; // 存储索引
+
+            // 默认选中第一个
+            if (index === selectedPaletteIndex) {
+              colorBox.classList.add('selected');
+            }
+
+            // 添加点击事件：模拟单选按钮行为
+            colorBox.onclick = () => {
+              document.querySelectorAll('.palette-item').forEach(el => el.classList.remove('selected'));
+              colorBox.classList.add('selected');
+              selectedPaletteIndex = index; // 更新全局选中的索引
+              log(`已选中调色板颜色索引: ${index}`);
+            };
+
+            // 添加到容器中
+            paletteContainer.appendChild(colorBox);
+          });
+        }
+
+        log('✅ UI 信息更新完成');
+      } catch (e) {
+        log('⚠️ 数据不是有效 JSON:', e.message);
+      }
+
     }
 
     function handleStatusUpdate(event) {
@@ -1070,6 +1105,7 @@
 
       console.log(`像素总数(W*H): ${pixelCount}`);
       console.log(`索引数组长度: ${indexData.length}`);
+      console.log(`颜色总数: ${colorCount}`);
 
       // 3. 严格按像素总数进行打包逻辑
       if (colorCount <= 2) { // 【1bpp】 8像素 -> 1字节
