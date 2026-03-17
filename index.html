@@ -455,6 +455,14 @@
       <input type="file" id="imageInput" accept="image/*" style="display: none;">
     </div>
 
+    <div class="adjust-controls">
+      <label>亮度 <span id="brightnessVal">0</span></label>
+      <input type="range" id="brightness" min="-100" max="100" value="0">
+
+      <label>对比度 <span id="contrastVal">0</span></label>
+      <input type="range" id="contrast" min="-100" max="100" value="0">
+    </div>
+
 
     <div style="margin-top: 10px;" class="control-group">
       <button id="exportBinBtn">Export Bin</button>
@@ -1030,7 +1038,6 @@
       }
     });
 
-    //
     async function quantizeImage() {
       // 1. 获取设备要求的宽高
       const targetWidth = parseInt(document.getElementById('width').value);
@@ -1050,6 +1057,20 @@
       // 获取完整的 ImageData 对象
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data; // 这里的 data 是 [R,G,B,A, R,G,B,A...]
+
+      const brightness = parseInt(document.getElementById('brightness').value);
+      const contrast = parseInt(document.getElementById('contrast').value);
+      if (brightness !== 0 || contrast !== 0) {
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        for (let i = 0; i < data.length; i += 4) {
+          for (let c = 0; c < 3; c++) {
+            let v = data[i + c];
+            v += brightness;
+            v = factor * (v - 128) + 128;
+            data[i + c] = Math.min(255, Math.max(0, Math.round(v)));
+          }
+        }
+      }
 
       // 假设 LUT_DATA 是你之前加载的 .bin 文件的 ArrayBuffer
       if (useLut && typeof LUT_DATA !== 'undefined' && LUT_DATA) {
@@ -1089,16 +1110,10 @@
       // 【重要修正】直接传入 imageData 对象，获取像素索引数组
       // 此时 indexData.length 理论上应等于 targetWidth * targetHeight
       const indexData = rgbquant.reduce(imageData, 2);
-      // 🔍 打印关键信息进行核对
-      console.log("--- 原始索引数据排查 ---");
-      console.log("预期像素总数 (W*H):", targetWidth * targetHeight);
-      console.log("实际 indexData 长度:", indexData.length);
-      console.log("前 10 个像素的索引值:", indexData.slice(0, 10));
 
-      if (indexData.length !== targetWidth * targetWidth) {
+      if (indexData.length !== targetWidth * targetHeight) {
         console.error("❌ 警告：索引数组长度与分辨率不匹配！可能是 RgbQuant 配置或原图尺寸问题。");
       }
-
 
       const pixelCount = targetWidth * targetHeight;
       const colorCount = devicePalette.length;
@@ -1117,8 +1132,8 @@
         }
       }
       else if (colorCount <= 4) {
-        const w = 1304; // 强制固定宽度，确保步进一致
-        const h = 984;
+        const w = targetWidth; // 强制固定宽度，确保步进一致
+        const h = targetHeight;
         const stride = w / 4; // 每行严格 326 字节
 
         packedData = new Uint8Array(stride * h);
@@ -1169,6 +1184,25 @@
       quantizedImage.src = canvas.toDataURL();
       quantizedImage.style.display = 'block';
     };
+
+    let adjustTimer = null;
+    function scheduleQuantize() {
+      clearTimeout(adjustTimer);
+      adjustTimer = setTimeout(async () => {
+        const result = await quantizeImage();
+        if (result) outputData = result;
+      }, 500);
+    }
+
+    // 滑块数值实时显示
+    document.getElementById('brightness').addEventListener('input', (e) => {
+      document.getElementById('brightnessVal').textContent = e.target.value;
+      scheduleQuantize();
+    });
+    document.getElementById('contrast').addEventListener('input', (e) => {
+      document.getElementById('contrastVal').textContent = e.target.value;
+      scheduleQuantize();
+    });
 
     document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
       const result = await quantizeImage();
