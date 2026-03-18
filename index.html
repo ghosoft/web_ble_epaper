@@ -5,340 +5,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BLE 电子纸</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 40px auto;
-      padding: 20px;
-      background: #f9f9f9;
-    }
-
-    label {
-      display: inline-block;
-      /* 必须设置，否则 width 无效 */
-      width: 100px;
-      /* 根据你最长的文字（比如 Model Name）来定宽度 */
-      text-align: right;
-      /* 文字靠右对齐，显得专业 */
-      margin-right: 15px;
-      /* 解决你提到的：input 离文字太近的问题 */
-    }
-
-    input {
-      margin-left: 10px;
-      padding: 5px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      width: 100%;
-      max-width: 100px;
-    }
-
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin: 10px 5px;
-      margin-left: auto;
-      cursor: pointer;
-
-      background-color: #007BFF;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
-
-      line-height: 1.2;
-      height: 40px;
-
-      /* 当鼠标悬停在按钮上时改变背景颜色 */
-      &:hover {
-        background-color: #0056b3;
-        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
-      }
-
-      /* 当按钮被按下时 */
-      &:active {
-        transform: translateY(1px);
-        /* 模拟按下的效果 */
-        box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
-      }
-    }
-
-    .control-group {
-      border: 2px solid #e5e5e5;
-      border-radius: 8px;
-      padding: 8px;
-      background-color: #f9f9f9;
-    }
-
-    .row {
-      display: flex;
-      /* 开启弹性布局 */
-      align-items: center;
-      /* 垂直居中对齐 */
-      margin-bottom: 8px;
-      /* 每行之间的间距 */
-    }
-
-    .preview-box {
-      width: 380px;
-      height: 300px;
-      border: 2px dashed #ccc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-
-    .preview-box img {
-      max-width: 100%;
-      max-height: 100%;
-      display: none;
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      margin: auto;
-    }
-
-    .preview-box .placeholder {
-      color: #999;
-      pointer-events: none;
-    }
-
-    @media (max-width: 640px) {
-      #imagePreviewsContainer {
-        flex-direction: column;
-        align-items: center;
-      }
-    }
-
-    /* 调色板颜色块基础样式及选中状态 */
-    .palette-item {
-      width: 24px;
-      height: 24px;
-      border: 2px solid #ccc;
-      cursor: pointer;
-      border-radius: 4px;
-      transition: transform 0.2s, border-color 0.2s;
-    }
-
-    .palette-item:hover {
-      transform: scale(1.1);
-    }
-
-    .palette-item.selected {
-      border-color: #007BFF;
-      /* 选中时显示蓝色高亮边框 */
-      box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
-      outline: 2px solid #007BFF;
-    }
-
-    #status {
-      /* 核心：固定在窗口底部 */
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      /* 撑满左右宽度 */
-      z-index: 9999;
-      /* 确保在所有元素最上层 */
-
-      /* 样式优化 */
-      margin: 0;
-      /* 移除外边距，防止留缝 */
-      padding: 10px;
-      background: rgba(255, 255, 255, 0.95);
-      /* 半透明背景，能看到底下的内容 */
-      border-top: 1px solid #ddd;
-      /* 只需要顶部边框 */
-      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-      /* 添加阴影，提升层次感 */
-
-      /* 尺寸控制 */
-      height: 150px;
-      /* 建议固定高度，或者使用 max-height */
-      overflow-y: auto;
-      font-size: 12px;
-      box-sizing: border-box;
-      /* 确保 padding 不撑开总宽度 */
-    }
-
-    #imagePreviewsContainer {
-      display: flex;
-      gap: 16px;
-      /* 两个预览框之间的间距 */
-      margin: 10px 0;
-      flex-wrap: wrap;
-      /* 允许在窄屏时换行 */
-      justify-content: center;
-    }
-
-    /**************************************************************/
-    /* 弹窗样式 */
-    /**************************************************************/
-    .overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.7);
-      /* 半透明黑背景 */
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      backdrop-filter: blur(4px);
-      transition: opacity 0.5s ease, visibility 0.5s;
-      visibility: visible;
-      opacity: 1;
-    }
-
-    .loader-container {
-      background: #fff;
-      padding: 30px;
-      border-radius: 20px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-      position: relative;
-      width: 220px;
-      height: 220px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .spinner {
-      position: absolute;
-      width: 120px;
-      height: 120px;
-      animation: rotateSpinner 1.2s linear infinite;
-      /* 整体旋转 */
-    }
-
-    .dot {
-      position: absolute;
-      width: 12px;
-      height: 12px;
-      background: #e0e0e0;
-      /* 默认白色/浅灰 */
-      border-radius: 50%;
-      left: 54px;
-      /* 居中计算 */
-      transform-origin: 6px 60px;
-      /* 以圆心为中心旋转 */
-    }
-
-    /* 布局8个圆圈的位置 */
-    .dot:nth-child(1) {
-      transform: rotate(0deg);
-      background: #2ecc71;
-    }
-
-    /* 唯一的绿点 */
-    .dot:nth-child(2) {
-      transform: rotate(45deg);
-    }
-
-    .dot:nth-child(3) {
-      transform: rotate(90deg);
-    }
-
-    .dot:nth-child(4) {
-      transform: rotate(135deg);
-    }
-
-    .dot:nth-child(5) {
-      transform: rotate(180deg);
-    }
-
-    .dot:nth-child(6) {
-      transform: rotate(225deg);
-    }
-
-    .dot:nth-child(7) {
-      transform: rotate(270deg);
-    }
-
-    .dot:nth-child(8) {
-      transform: rotate(315deg);
-    }
-
-    @keyframes rotateSpinner {
-      from {
-        transform: rotate(0deg);
-      }
-
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    .loader-text {
-      text-align: center;
-      font-family: 'Arial', sans-serif;
-      z-index: 10;
-    }
-
-    #loaderProgress {
-      font-size: 24px;
-      font-weight: bold;
-      color: #333;
-    }
-
-    #loaderTime {
-      font-size: 14px;
-      color: #888;
-      margin-top: 4px;
-    }
-
-    /* 状态类控制 */
-    .loader-container.success {
-      border: 4px solid #2ecc71;
-      background: #f0fff4;
-    }
-
-    .loader-container.warning {
-      border: 4px solid #f1c40f;
-      background: #fffdf0;
-    }
-
-    /* 状态文字提示 */
-    .status-msg {
-      margin-top: 15px;
-      font-size: 16px;
-      font-weight: bold;
-      display: none;
-      /* 初始隐藏 */
-    }
-
-    .success .status-msg {
-      display: block;
-      color: #27ae60;
-    }
-
-    .warning .status-msg {
-      display: block;
-      color: #d4ac0d;
-    }
-
-    /* 成功/失败时停止转圈并隐藏进度，只留时间或结果 */
-    .success .spinner,
-    .warning .spinner {
-      display: none;
-    }
-
-    /**************************************************************/
-    /* 弹窗样式结束 */
-    /**************************************************************/
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+  <div id="advancedToggle">
+    <span>高级模式</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="advancedMode">
+      <span class="toggle-thumb"></span>
+    </label>
+  </div>
   <div id="mainContainer">
     <div id="transferOverlay" class="overlay" style="display: none;">
       <div id="loaderBox" class="loader-container">
@@ -388,7 +65,7 @@
         <button id="setWifiBtn">Set WiFi</button>
       </div>
       <div class="row">
-        <lable>IP: </lable>
+        <label>IP: </label>
         <input id="ipAddress" type="text" readonly>
         <button id="getIPBtn">Get IP</button>
       </div>
@@ -398,7 +75,8 @@
     <div id="setdevice" class="control-group">
       <div class="row">
         <label>Model Name: </label>
-        <input id="modelSet" type="text">
+        <!--input id="modelSet" type="text"-->
+        <select id="modelSet"></select>
         <button id="setdeviceBtn">Set Device</button>
       </div>
       <div class="row">
@@ -416,7 +94,7 @@
       <div class="row">
         <label>型号:</label>
         <input id="modelGet" type="text" readonly>
-        <button id="getinfobtn">Get Info</button>
+        <button id="getinfobtn" hidden="true">Get Info</button>
       </div>
       <div class="row">
         <label>宽:</label>
@@ -456,24 +134,19 @@
     </div>
 
     <div class="adjust-controls">
+      <label><input type="checkbox" id="useLutCheckbox" checked> 色彩增强 (LUT)</label>
       <label>亮度 <span id="brightnessVal">0</span></label>
       <input type="range" id="brightness" min="-100" max="100" value="0">
-
       <label>对比度 <span id="contrastVal">0</span></label>
       <input type="range" id="contrast" min="-100" max="100" value="0">
     </div>
 
 
-    <div style="margin-top: 10px;" class="control-group">
+    <div id="advancedImageOps" style="margin-top: 10px;" class="control-group">
       <button id="exportBinBtn">Export Bin</button>
       <button id="importBinBtn">Import Bin</button>
       <input type="file" id="fileInput" style="display: none;" accept=".bin">
       <button id="quantizedImagebtn">Quantized Image</button>
-      <label
-        style="display: flex; align-items: center; cursor: pointer; width: auto; text-align: left; margin-right: 0;">
-        <input type="checkbox" id="useLutCheckbox" style="width: 18px; height: 18px; margin-right: 5px;" checked>
-        色彩增强 (LUT)
-      </label>
     </div>
 
     <button id="sendBtnBle">Send Image (Bluetooth)</button>
@@ -500,6 +173,20 @@
     const ssidInput = document.getElementById('ssid');
     const passwordInput = document.getElementById('password');
     const setBtn = document.getElementById('setWifiBtn');
+
+    const MODEL_LIST = [
+      "YMS9841304-1248CIH-E5-V2",
+      "YMS16001200-1330AAX-E6",
+      // 继续添加...
+    ];
+
+    const modelSelect = document.getElementById('modelSet');
+    MODEL_LIST.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      modelSelect.appendChild(opt);
+    });
 
     const EPD_CMD = {
       CMD_RESET_EPD: 0x00, //reset epd
@@ -906,6 +593,32 @@
       return transformedData;
     }
 
+    const advancedEls = [
+      //document.querySelector('[hidden="true"]'),   // 那个隐藏的工具栏
+      // 还想隐藏/显示哪些元素继续往这里加
+      document.getElementById('setdevice'),
+      document.getElementById('advancedImageOps'),
+      document.getElementById('getIPBtn'),
+      document.getElementById('sendBtnBle'),
+      document.getElementById('saveToFlashBtn'),
+      document.getElementById('clearFlashBtn'),
+    ];
+
+    document.getElementById('advancedMode').addEventListener('change', (e) => {
+      const on = e.target.checked;
+      advancedEls.forEach(el => {
+        if (el) el.hidden = !on;
+      });
+      localStorage.setItem('advancedMode', on ? '1' : '0');
+    });
+
+    // 页面加载时恢复状态
+    window.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('advancedMode') === '1';
+      document.getElementById('advancedMode').checked = saved;
+      advancedEls.forEach(el => { if (el) el.hidden = !saved; });
+    });
+
     // 页面 DOM 就绪后自动触发
     document.addEventListener('DOMContentLoaded', () => {
       loadLUT();
@@ -990,7 +703,7 @@
     });
 
     document.getElementById('sendBtnIP').addEventListener('click', async () => {
-      const targetIp = bleState.deviceIp || document.getElementById('ipInput').value;
+      const targetIp = bleState.deviceIp || document.getElementById('ipAddress').value;
 
       if (!targetIp || targetIp === "0.0.0.0") {
         alert("请先获取有效的设备 IP 地址！");
