@@ -212,12 +212,12 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(130, 130, 130, 0.85);
+  background: rgba(204, 185, 11, 0.85);
   backdrop-filter: blur(6px);
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 13px;
-  color: #ccc;
+  color: #000000;
   user-select: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 
