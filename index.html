@@ -136,11 +136,20 @@
     </div>
 
     <div class="adjust-controls">
-      <label>色彩增强 (LUT) <input type="checkbox" id="useLutCheckbox" checked></label>
-      <label>亮度 <span id="brightnessVal">0</span></label>
-      <input type="range" id="brightness" min="-100" max="100" value="0">
-      <label>对比度 <span id="contrastVal">0</span></label>
-      <input type="range" id="contrast" min="-100" max="100" value="0">
+      <label class="lut-label">色彩增强 (LUT) <input type="checkbox" id="useLutCheckbox" checked></label>
+
+      <div class="slider-row">
+        <label>亮度 <span id="brightnessVal">0</span></label>
+        <button class="step-btn" data-target="brightness" data-step="-1">−</button>
+        <input type="range" id="brightness" min="-100" max="100" value="0">
+        <button class="step-btn" data-target="brightness" data-step="1">+</button>
+      </div>
+      <div class="slider-row">
+        <label>对比度 <span id="contrastVal">0</span></label>
+        <button class="step-btn" data-target="contrast" data-step="-1">−</button>
+        <input type="range" id="contrast" min="-100" max="100" value="0">
+        <button class="step-btn" data-target="contrast" data-step="1">+</button>
+      </div>
     </div>
 
 
@@ -920,6 +929,14 @@
     document.getElementById('contrast').addEventListener('input', (e) => {
       document.getElementById('contrastVal').textContent = e.target.value;
       scheduleQuantize();
+    });
+
+    document.querySelectorAll('.step-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.target);
+        input.value = Math.min(100, Math.max(-100, +input.value + +btn.dataset.step));
+        input.dispatchEvent(new Event('input')); // 触发原有的联动逻辑
+      });
     });
 
     document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
