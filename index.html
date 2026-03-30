@@ -234,6 +234,7 @@
       CMD_SET_WIFI: 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
       CMD_SET_WORKING_MODE: 0x09, //show qrcode on image, 1byte, 0:off, 1:on
       CMD_SET_CUSTOM_NAME: 0x0A, //set custom name, 0x0A, name_len, name
+      CMD_QUERY_PROGRESS: 0x0B, //query transfer progress
     };
 
     let LUT_DATA = null;
@@ -770,7 +771,31 @@
       const startTime = Date.now();
 
       overlay.show(); // 👈 显示弹窗
-      overlay.update("..."); // WiFi 没有中间进度，显示省略号
+      overlay.update("0%"); // 初始化进度
+
+      // 启动蓝牙进度查询定时器（每 2 秒查询一次）
+      let progressTimer = null;
+      if (bleState.ch_tx && bleState.ch_rx) {
+        progressTimer = setInterval(async () => {
+          try {
+            // 发送查询命令
+            const queryCmd = new Uint8Array([EPD_CMD.CMD_QUERY_PROGRESS]);
+            await bleState.ch_tx.writeValueWithResponse(queryCmd);
+            
+            // 读取进度响应（2 字节）
+            const value = await withTimeout(bleState.ch_rx.readValue(), 1000, '读取进度');
+            const bytes = new Uint8Array(value.buffer);
+            
+            if (bytes.length >= 2) {
+              const progress = (bytes[0] << 8) | bytes[1];
+              log(`📊 WiFi 传输进度：${progress}%`);
+              overlay.update(progress.toString());
+            }
+          } catch (e) {
+            console.warn("查询进度失败:", e);
+          }
+        }, 2000);
+      }
 
       try {
         // 2. 直接发送整个 Uint8Array，不需要循环，不需要分包
@@ -785,16 +810,26 @@
           signal: AbortSignal.timeout(300000)
         });
 
+        // 停止进度查询
+        if (progressTimer) {
+          clearInterval(progressTimer);
+        }
+
         if (response.ok) {
           const result = await response.text();
           const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-          log(`✅ 发送成功！耗时: ${duration}秒, 服务器回复: ${result}`);
+          log(`✅ 发送成功！耗时：${duration}秒，服务器回复：${result}`);
         } else {
-          throw new Error(`服务器响应错误: ${response.status}`);
+          throw new Error(`服务器响应错误：${response.status}`);
         }
         await overlay.complete("同步成功"); // 👈 替换掉之前的 hide
       } catch (error) {
-        log(`❌ WiFi 发送失败: ${error.message}`);
+        // 停止进度查询
+        if (progressTimer) {
+          clearInterval(progressTimer);
+        }
+        
+        log(`❌ WiFi 发送失败：${error.message}`);
         console.error(error);
         await overlay.fail("WiFi 异常"); // 👈 替换掉之前的 hide
       }
