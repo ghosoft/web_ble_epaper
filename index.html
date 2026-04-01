@@ -161,14 +161,12 @@
       </div>
     </div>
 
-
     <div id="advancedImageOps" style="margin-top: 10px;" class="control-group">
       <button id="exportBinBtn">Export Bin</button>
       <button id="importBinBtn">Import Bin</button>
       <input type="file" id="fileInput" style="display: none;" accept=".bin">
       <button id="quantizedImagebtn">Quantized Image</button>
     </div>
-
 
     <br>
     <br>
@@ -199,66 +197,51 @@
     <div id="status">状态：等待操作...</div>
   </div>
 
+  <!-- ── 第三方库 ─────────────────────────────────────────────────── -->
   <script src="libs/RgbQuant/src/rgbquant.js"></script>
+
+  <!-- ── 蓝牙底层 & 协议层（必须先于 UI 逻辑加载）────────────────── -->
+  <script src="蓝牙操作.js"></script>
+  <script src="协议.js"></script>
+
+  <!-- ── UI 层 ───────────────────────────────────────────────────── -->
   <script>
-    // 1. 定义页面元素
-    const ssidInput = document.getElementById('ssid');
-    const passwordInput = document.getElementById('password');
-    const setBtn = document.getElementById('setWifiBtn');
+    /* ══════════════════════════════════════════════════════════════════
+     *  应用状态（仅 UI / 图像处理 相关）
+     * ══════════════════════════════════════════════════════════════════ */
+    let LUT_DATA = null;   // ArrayBuffer，LUT 色彩查找表
+    let useLut = true;
+    let devicePalette = [];     // [[r,g,b], ...]，来自设备信息
+    let outputData = null;   // Uint8Array，量化打包后的图像数据
+    let selectedPaletteIndex = 0;
 
-    const MODEL_LIST = [
-      "YMS9841304-1248CIH-E5-V2",
-      "YMS16001200-1330AAX-E6",
-      "YMS800480-073AAX-E6",
-      "YMS400600-040AAX-E6"
-      // 继续添加...
-    ];
+    /* ══════════════════════════════════════════════════════════════════
+     *  初始化 BLE 和协议库
+     * ══════════════════════════════════════════════════════════════════ */
+    BLE.init({
+      log: log,
+      onStatusChange: updateBleStatus,
+      onNotification: (event) => {
+        const result = EPD.handleNotification(event);
+        log(result.message);
+      },
+    });
 
+    EPD.init({ log });
+
+    /* ── 型号下拉列表 ──────────────────────────────────────────────── */
     const modelSelect = document.getElementById('modelSet');
-    MODEL_LIST.forEach(name => {
+    EPD.MODEL_LIST.forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
       modelSelect.appendChild(opt);
     });
 
-    const EPD_CMD = {
-      CMD_RESET_EPD: 0x00, //reset epd
-      CMD_SET_EPD_NAME: 0x01, //set epd name, 0x01, name_len, name
-      CMD_REPORT_EPD_INFO: 0x02, //report epd info at next read
-      CMD_START_WRITE_DATA: 0x03, //start to write data, 4byte means data len
-      CMD_CURRENT_PACKET_INDEX: 0x04, //current packet index and data
-      CMD_END_WRITE_DATA: 0x05, //end of write data
-      CMD_EPD_CLEAR: 0x06, //clear epd screen
-      CMD_BATTERY_LEVEL: 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
-      CMD_SET_WIFI: 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
-      CMD_SET_WORKING_MODE: 0x09, //show qrcode on image, 1byte, 0:off, 1:on
-      CMD_SET_CUSTOM_NAME: 0x0A, //set custom name, 0x0A, name_len, name
-      CMD_QUERY_PROGRESS: 0x0B, //query transfer progress
-    };
-
-    let LUT_DATA = null;
-    let useLut = true;
-
-    let deviceConfig = [];
-    let outputData = null;
-
-    let bleState = {
-      connected: false,
-      device: null,
-      server: null,
-      service: null,
-      characteristics: null,
-      ch_tx: null, // FF05: 写指令
-      ch_rx: null, // FF04: 读数据
-      ch_status: null, // FF01: 接收通知/指示 (Notify/Indicate)
-      deviceIp: ""
-    };
-
-    let selectedPaletteIndex = 0; // 默认选中第一个颜色（通常是背景色）
-
+    /* ══════════════════════════════════════════════════════════════════
+     *  传输进度遮罩层（Overlay）
+     * ══════════════════════════════════════════════════════════════════ */
     const overlay = {
-      // 使用 getter 模式可以有效避免脚本加载顺序导致的 null 问题
       get el() { return document.getElementById('transferOverlay'); },
       get box() { return document.getElementById('loaderBox'); },
       get progress() { return document.getElementById('loaderProgress'); },
@@ -270,7 +253,7 @@
 
       show() {
         if (!this.el || !this.box) {
-          console.error("❌ 找不到遮罩层元素，请检查 HTML ID 是否正确");
+          console.error('❌ 找不到遮罩层元素');
           return;
         }
         this.box.className = 'loader-container';
@@ -290,7 +273,7 @@
         if (this.progress) this.progress.innerText = `${percent}%`;
       },
 
-      async complete(msg = "传输成功") {
+      async complete(msg = '传输成功') {
         clearInterval(this.timerInterval);
         this.box.classList.add('success');
         this.status.innerText = `✅ ${msg}`;
@@ -301,7 +284,7 @@
         setTimeout(() => this.el.style.display = 'none', 500);
       },
 
-      async fail(msg = "传输失败") {
+      async fail(msg = '传输失败') {
         clearInterval(this.timerInterval);
         if (!this.box || !this.el) return;
         this.box.classList.add('warning');
@@ -314,534 +297,124 @@
       }
     };
 
-    window.onload = function () {
-      const savedSSID = localStorage.getItem('saved_ssid');
-      const savedPass = localStorage.getItem('saved_password');
+    /* ══════════════════════════════════════════════════════════════════
+     *  工具函数
+     * ══════════════════════════════════════════════════════════════════ */
 
-      if (savedSSID) ssidInput.value = savedSSID;
-      if (savedPass) passwordInput.value = savedPass;
-    };
-
+    /** 日志函数：带时间戳追加到 #status */
     function log(...args) {
       const statusDiv = document.getElementById('status');
-
-      // 生成格式化时间戳 [HH:mm:ss.SSS]
       const now = new Date();
-      const h = String(now.getHours()).padStart(2, '0');
-      const m = String(now.getMinutes()).padStart(2, '0');
-      const s = String(now.getSeconds()).padStart(2, '0');
-      const ms = String(now.getMilliseconds()).padStart(3, '0');
-      const timestamp = `[ ${h}:${m}:${s}.${ms}]`; // ← 这里没有多余空格！
+      const timestamp = `[${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0')}]`;
 
-      // 安全转换参数（避免循环引用导致的错误）
       const message = args.map(arg => {
         try {
           return typeof arg === 'object' && arg !== null
             ? JSON.stringify(arg, null, 2)
             : String(arg);
         } catch (e) {
-          return `[Unserializable Object: ${e.message}]`;
+          return `[Unserializable: ${e.message}]`;
         }
       }).join(' ');
 
-      const fullMessage = ` ${timestamp} ${message}`;
-
       if (statusDiv) {
         const line = document.createElement('div');
-        line.textContent = fullMessage;
-        line.style.fontFamily = 'monospace'; // 提升时间戳可读性
+        line.textContent = ` ${timestamp} ${message}`;
+        line.style.fontFamily = 'monospace';
         line.style.fontSize = '0.95em';
         statusDiv.appendChild(line);
-        statusDiv.scrollTop = statusDiv.scrollHeight; // 自动滚动到底部
+        statusDiv.scrollTop = statusDiv.scrollHeight;
       } else {
-        // 回退到控制台（同样带时间戳，便于调试）
-        console.log(fullMessage);
-        console.warn('未找到 #status 元素，日志已输出到控制台');
+        console.log(`${timestamp} ${message}`);
       }
     }
 
-    const withTimeout = (promise, ms, name) => {
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout: ${name} (${ms}ms)`)), ms)
-      );
-      return Promise.race([promise, timeout]);
-    };
+    /** 更新蓝牙状态指示器 UI */
+    function updateBleStatus(state) {
+      const dot = document.querySelector('.status-dot');
+      const text = document.querySelector('.status-text');
+      if (!dot || !text) return;
 
-    function isWebBluetoothEnabled() {
-      if (navigator.bluetooth) {
-        return true;
-      } else {
-        console.log('Web Bluetooth API is not available.\n' +
-          'Please make sure the "Experimental Web Platform features" flag is enabled.');
-        return false;
+      dot.classList.remove('connected', 'connecting');
+
+      switch (state) {
+        case 'connecting':
+          dot.classList.add('connecting');
+          text.textContent = '蓝牙连接中...';
+          break;
+        case 'connected':
+          dot.classList.add('connected');
+          text.textContent = '蓝牙已连接';
+          break;
+        case 'disconnected':
+          text.textContent = '蓝牙未连接';
+          break;
+        case 'error':
+          text.textContent = '蓝牙连接出错';
+          break;
       }
     }
 
-    function printCharPermissions(char, name) {
-      const props = char.properties;
-      log(`\n--- ${name} (${char.uuid}) ---`);
-      log('Readable: ', props.read);
-      log('Writable (req):', props.write);
-      log('Writable (cmd):', props.writeWithoutResponse);
-      log('Notifiable: ', props.notify);
-      log('Indicatable: ', props.indicate);
+    /** 将设备信息写入页面 UI，并渲染调色板 */
+    function applyDeviceInfoToUI(info) {
+      document.getElementById('modelGet').value = info.name;
+      document.getElementById('width').value = info.width;
+      document.getElementById('height').value = info.height;
+      document.getElementById('BPP').value = info.bpp;
+
+      devicePalette = info.palette;
+
+      const paletteContainer = document.getElementById('paletteContainer');
+      if (!paletteContainer || !info.palette.length) return;
+
+      paletteContainer.innerHTML = '';
+      info.palette.forEach((rgb, index) => {
+        const colorBox = document.createElement('div');
+        colorBox.className = 'palette-item';
+        colorBox.style.backgroundColor = `rgb(${rgb.join(',')})`;
+        colorBox.dataset.index = index;
+
+        if (index === selectedPaletteIndex) colorBox.classList.add('selected');
+
+        colorBox.onclick = () => {
+          document.querySelectorAll('.palette-item').forEach(el => el.classList.remove('selected'));
+          colorBox.classList.add('selected');
+          selectedPaletteIndex = index;
+          log(`已选中调色板颜色索引: ${index}`);
+        };
+
+        paletteContainer.appendChild(colorBox);
+      });
+
+      log('✅ UI 设备信息更新完成');
     }
 
-    function convertImageToBytes(img) {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+    /* ══════════════════════════════════════════════════════════════════
+     *  LUT 加载 & 图像处理
+     * ══════════════════════════════════════════════════════════════════ */
 
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-
-      ctx.drawImage(img, 0, 0);
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const rgbaData = imageData.data; // Uint8ClampedArray
-
-      const rgbData = new Uint8Array(rgbaData.length / 4 * 3);
-      let j = 0;
-      for (let i = 0; i < rgbaData.length; i += 4) {
-        rgbData[j++] = rgbaData[i];     // R
-        rgbData[j++] = rgbaData[i + 1]; // G
-        rgbData[j++] = rgbaData[i + 2]; // B
-        // 跳过 Alpha: rgbaData[i + 3]
-      }
-
-      return rgbData;
-    }
-
-    async function startBle() {
-      let filters = [];
-
-      let serviceUuid = document.querySelector('#service').value;
-      if (serviceUuid.startsWith('0x')) {
-        serviceUuid = parseInt(serviceUuid);
-      }
-
-      let characteristicUuid = document.querySelector('#characteristic').value;
-      if (characteristicUuid.startsWith('0x')) {
-        characteristicUuid = parseInt(characteristicUuid);
-      }
-
-      let filterService = document.querySelector('#service').value;
-
-      if (filterService.startsWith('0x')) {
-        filterService = parseInt(filterService);
-      }
-      if (filterService) {
-        filters.push({ services: [filterService] });
-      }
-
-      let filterName = document.querySelector('#name').value;
-      if (filterName) {
-        filters.push({ name: filterName });
-      }
-
-      let filterNamePrefix = document.querySelector('#namePrefix').value;
-      if (filterNamePrefix) {
-        filters.push({ namePrefix: filterNamePrefix });
-      }
-
-      let options = {};
-      if (document.querySelector('#allDevices').checked) {
-        options.acceptAllDevices = true;
-      } else {
-        options.filters = filters;
-      }
-
-      try {
-        updateBleStatus('connecting');
-        log('Requesting Bluetooth Device...');
-        log('with ' + JSON.stringify(options));
-        bleState.device = await navigator.bluetooth.requestDevice(options)
-
-        // 监听断开事件（非常重要！如果硬件在连接瞬间断开，这里能捕获）
-        bleState.device.addEventListener('gattserverdisconnected', () => {
-          log('⚠️ 蓝牙连接意外断开！');
-          updateBleStatus('disconnected');
-          // 重置bleState状态
-          bleState.connected = false;
-          bleState.server = null;
-          bleState.service = null;
-          bleState.characteristics = null;
-          bleState.ch_tx = null;
-          bleState.ch_rx = null;
-          bleState.ch_status = null;
-        });
-
-        log('Connecting to GATT Server...');
-        bleState.server = await withTimeout(bleState.device.gatt.connect(), 25000, 'GATT连接');
-
-        log('Getting Service...');
-        bleState.service = await withTimeout(bleState.server.getPrimaryService(serviceUuid), 25000, '服务获取');
-
-        log('Getting Characteristics...');
-        bleState.characteristics = await withTimeout(bleState.service.getCharacteristics(), 5000, '特征获取');
-
-        log('> Characteristics: ' +
-          bleState.characteristics.map(c => c.uuid).join('\n' + ' '.repeat(19)));
-
-        bleState.ch_tx = await bleState.service.getCharacteristic(0xFF05); // 写
-        bleState.ch_rx = await bleState.service.getCharacteristic(0xFF04); // 读
-        bleState.ch_status = await bleState.service.getCharacteristic(0xFF01); // 接收结果反馈
-        console.log("Status 特性 UUID:", bleState.ch_status.uuid);
-
-        await withTimeout(bleState.ch_status.startNotifications(), 5000, '通知启动');
-        bleState.ch_status.addEventListener('characteristicvaluechanged', handleStatusUpdate);
-        log("✅ 所有蓝牙通道初始化完成 (FF01, FF04, FF05)");
-        updateBleStatus('connected');
-
-      }
-      catch (error) {
-        log('❌ 错误: ' + error.message);
-        updateBleStatus('error');
-        alert("获取蓝牙服务失败，请检查服务UUID是否正确");
-        return;
-      };
-
-      try {
-        const payload = new Uint8Array(1);
-        payload[0] = EPD_CMD.CMD_REPORT_EPD_INFO;
-
-        await bleState.ch_tx.writeValueWithResponse(payload);
-        log("✅ 获取信息命令发送成功");
-      } catch (error) {
-        log(`❌ 获取信息命令发送失败: ${error}`);
-        console.error(error);
-        return;
-      }
-
-      const value = await withTimeout(bleState.ch_rx.readValue(), 5000, 'FF04 读取');
-      log('Char FF04 value: ' + value);
-
-      const bytes = new Uint8Array(value.buffer);
-      log(`✅ FF04 读取成功，共 ${bytes.length} 字节:`);
-      log('数据（十六进制）:', bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
-
-      if (bytes.length === 0) {
-        alert('❌ 读取到空数据, 可能是新设备, 需要先设置型号');
-        return;
-      }
-
-      try {
-        const jsonString = new TextDecoder().decode(value);
-        log('数据（JSON 文本）:', `"${jsonString}"`);
-
-        // 可选：解析为 JS 对象并美化打印
-        const jsonObj = JSON.parse(jsonString);
-        log('数据（解析后对象）:', JSON.stringify(jsonObj, null, 2));
-
-        if (jsonObj.palette) {
-          devicePalette = jsonObj.palette.split(';').map(c => c.split(',').map(Number));
-        }
-
-        document.getElementById('modelGet').value = jsonObj.name || "未知";
-        document.getElementById('width').value = jsonObj.width || 0;
-        document.getElementById('height').value = jsonObj.height || 0;
-        document.getElementById('BPP').value = jsonObj.bpp || 0;
-
-        // 2. 处理并渲染调色板
-        const paletteContainer = document.getElementById('paletteContainer');
-        if (paletteContainer && jsonObj.palette) {
-          // 清空旧的颜色方块
-          paletteContainer.innerHTML = '';
-
-          // 解析调色板字符串 "0,0,0;255,255,255;..."
-          const colors = jsonObj.palette.split(';');
-
-          colors.forEach((colorRgb, index) => {
-            const colorBox = document.createElement('div');
-            colorBox.className = 'palette-item'; // 使用新样式
-            colorBox.style.backgroundColor = `rgb(${colorRgb})`;
-            colorBox.dataset.index = index; // 存储索引
-
-            // 默认选中第一个
-            if (index === selectedPaletteIndex) {
-              colorBox.classList.add('selected');
-            }
-
-            // 添加点击事件：模拟单选按钮行为
-            colorBox.onclick = () => {
-              document.querySelectorAll('.palette-item').forEach(el => el.classList.remove('selected'));
-              colorBox.classList.add('selected');
-              selectedPaletteIndex = index; // 更新全局选中的索引
-              log(`已选中调色板颜色索引: ${index}`);
-            };
-
-            // 添加到容器中
-            paletteContainer.appendChild(colorBox);
-          });
-        }
-
-        log('✅ UI 信息更新完成');
-      } catch (e) {
-        log('⚠️ 数据不是有效 JSON:', e.message);
-      }
-
-    }
-
-    function handleStatusUpdate(event) {
-      const value = event.target.value;
-      // 假设 ESP32 在保存成功后发送 0x01，失败发送 0x00
-      const status = value.getUint8(0);
-
-      if (status === 0x81) {
-        log("🎯 硬件反馈: 型号设置成功并已保存到 NVS");
-        // 这里可以执行 UI 变绿等操作
-      } else if (status === 0x8F) {
-        log("❌ 硬件反馈: 型号设置失败 (型号无效)");
-      } else {
-        log(`📡 收到未知状态码: 0x${status.toString(16)}`);
-      }
-    }
-
-    // 封装加载逻辑
     async function loadLUT() {
       try {
         const res = await fetch('lut/Spectra6_Render_LUT_Default_v2.bin');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         LUT_DATA = await res.arrayBuffer();
-
         const view = new Uint8Array(LUT_DATA);
         const head = Array.from(view.slice(0, 18)).map(b => b.toString(16).padStart(2, '0')).join(' ');
         log('✅ LUT 加载成功 | 大小:', LUT_DATA.byteLength, '字节 | 前18字节:', head);
       } catch (err) {
-        log('LUT 加载错误:', err);
+        log('LUT 加载失败:', err);
       }
     }
 
-    function applyLutTransformation(rgbData, lutBuffer) {
-      if (!lutBuffer || lutBuffer.byteLength < 0xC0012) {
-        console.warn("LUT 数据无效，跳过转换");
-        return rgbData;
-      }
-
-      const g_lut_data = new Uint8Array(lutBuffer, 0x12); // 从 0x12 偏移量开始是 LUT 数据
-      const transformedData = new Uint8Array(rgbData.length);
-
-      for (let i = 0; i < rgbData.length; i += 3) {
-        const r = rgbData[i];
-        const g = rgbData[i + 1];
-        const b = rgbData[i + 2];
-
-        // 对应 C 语言中的索引计算: ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3
-        // 注意：JS 的位运算会处理成 32 位整数
-        const lutIdx = ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3;
-
-        // 根据 C 代码逻辑：LUT 存储格式为 BGR，输出需转回 RGB
-        transformedData[i] = g_lut_data[lutIdx + 2]; // R
-        transformedData[i + 1] = g_lut_data[lutIdx + 1]; // G
-        transformedData[i + 2] = g_lut_data[lutIdx + 0]; // B
-      }
-
-      return transformedData;
-    }
-
-    const advancedEls = [
-      //document.querySelector('[hidden="true"]'),   // 那个隐藏的工具栏
-      document.getElementById('bleFilter'),
-      document.getElementById('setdevice'),
-      document.getElementById('advancedImageOps'),
-      document.getElementById('getIPBtn'),
-      document.getElementById('sendBtnBle'),
-      document.getElementById('saveToFlashBtn'),
-      document.getElementById('clearFlashBtn'),
-      document.getElementById('ClearBtn'),
-      document.getElementById('status'),
-    ];
-
-    document.getElementById('advancedMode').addEventListener('change', (e) => {
-      const on = e.target.checked;
-      advancedEls.forEach(el => {
-        if (el) el.hidden = !on;
-      });
-      localStorage.setItem('advancedMode', on ? '1' : '0');
-    });
-
-    // 页面加载时恢复状态
-    window.addEventListener('DOMContentLoaded', () => {
-      const saved = localStorage.getItem('advancedMode') === '1';
-      document.getElementById('advancedMode').checked = saved;
-      advancedEls.forEach(el => { if (el) el.hidden = !saved; });
-      updateBleStatus('disconnected');
-
-    });
-
-    // 页面 DOM 就绪后自动触发
-    document.addEventListener('DOMContentLoaded', () => {
-      loadLUT();
-    });
-
-
-    document.getElementById('sendBtnBle').addEventListener('click', async () => {
-      if (!outputData || outputData.length === 0) {
-        alert("请先进行图片量化，生成输出数据！");
-        return;
-      }
-
-      if (!bleState.ch_tx) {
-        alert("蓝牙未连接或写入特性不可用！");
-        return;
-      }
-
-      const CHUNK_SIZE = 490; // 每个包包含的图像数据长度
-      const totalPackets = Math.ceil(outputData.length / CHUNK_SIZE);
-      const totalBytes = outputData.length;
-      log(`开始发送数据，总计 ${outputData.length} 字节，分为 ${totalPackets} 个包...`);
-      log(`📡 发送开始指令: 总大小 ${totalBytes} 字节`);
-
-      try {
-        const startCmd = new Uint8Array(5);
-        startCmd[0] = 0x03;
-        startCmd[1] = (totalBytes >> 24) & 0xFF;
-        startCmd[2] = (totalBytes >> 16) & 0xFF;
-        startCmd[3] = (totalBytes >> 8) & 0xFF;
-        startCmd[4] = totalBytes & 0xFF;
-
-        log(`📡 发送开始指令: 总大小 ${totalBytes} 字节`);
-        await bleState.ch_tx.writeValue(startCmd);
-
-        overlay.show(); // 👈 显示弹窗
-
-        for (let i = 0; i < totalPackets; i++) {
-          const start = i * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, totalBytes);
-          const actualPayloadLen = end - start; // 最后一包可能小于 490
-
-          const packet = new Uint8Array(5 + actualPayloadLen);
-          packet[0] = 0x04;
-          packet[1] = (i >> 24) & 0xFF;
-          packet[2] = (i >> 16) & 0xFF;
-          packet[3] = (i >> 8) & 0xFF;
-          packet[4] = i & 0xFF;
-
-          // 4. 填充接下来的 490 字节图像数据
-          const chunk = outputData.slice(start, end);
-          packet.set(chunk, 5);
-
-          // 5. 通过蓝牙发送 (使用 writeValue 或 writeValueWithResponse)
-          // 注意：如果设备支持，建议使用 writeValueWithResponse 确保数据到达
-          //await bleState.ch_tx.writeValue(packet);
-          await bleState.ch_tx.writeValueWithResponse(packet);
-
-          // 6. 更新进度 (可选)
-          if (i % 10 === 0 || i === totalPackets - 1) {
-            const progress = ((i + 1) / totalPackets * 100).toFixed(1);
-            log(`进度: ${progress}% (${i + 1}/${totalPackets})`);
-          }
-
-          const progress = ((i + 1) / totalPackets * 100).toFixed(1);
-          overlay.update(progress); // 👈 更新进度
-
-          // 💡 如果发送过快导致丢包，可以加一个微小的延迟
-          // await new Promise(resolve => setTimeout(resolve, 10));
-        }
-
-        const endCmd = new Uint8Array([0x05]);
-        log("📡 发送结束指令");
-        await bleState.ch_tx.writeValue(endCmd);
-
-        log("✅ 所有数据包发送完成！");
-        await overlay.complete("同步成功"); // 👈 替换掉之前的 hide
-      } catch (error) {
-        log(`❌ 发送失败: ${error.message}`);
-        console.error(error);
-        await overlay.fail("蓝牙异常"); // 👈 替换掉之前的 hide
-      }
-    });
-
-    document.getElementById('sendBtnIP').addEventListener('click', async () => {
-      const targetIp = bleState.deviceIp || document.getElementById('ipAddress').value;
-
-      if (!targetIp || targetIp === "0.0.0.0") {
-        alert("请先获取有效的设备 IP 地址！");
-        return;
-      }
-
-      // 1. 公用检查逻辑
-      if (!outputData || outputData.length === 0) {
-        alert("请先进行图片量化，生成输出数据！");
-        return;
-      }
-
-      const url = `http://${targetIp}/upload_epd`;
-      log(`🚀 开始通过 WiFi (HTTP) 发送数据，总计 ${outputData.length} 字节...`);
-      const startTime = Date.now();
-
-      overlay.show(); // 👈 显示弹窗
-      overlay.update("0%"); // 初始化进度
-
-      // 启动蓝牙进度查询定时器（每 2 秒查询一次）
-      let progressTimer = null;
-      if (bleState.ch_tx && bleState.ch_rx) {
-        progressTimer = setInterval(async () => {
-          try {
-            // 发送查询命令
-            const queryCmd = new Uint8Array([EPD_CMD.CMD_QUERY_PROGRESS]);
-            await bleState.ch_tx.writeValueWithResponse(queryCmd);
-            
-            // 读取进度响应（2 字节）
-            const value = await withTimeout(bleState.ch_rx.readValue(), 1000, '读取进度');
-            const bytes = new Uint8Array(value.buffer);
-            
-            if (bytes.length >= 2) {
-              const progress = (bytes[0] << 8) | bytes[1];
-              log(`📊 WiFi 传输进度：${progress}%`);
-              overlay.update(progress.toString());
-            }
-          } catch (e) {
-            console.warn("查询进度失败:", e);
-          }
-        }, 2000);
-      }
-
-      try {
-        // 2. 直接发送整个 Uint8Array，不需要循环，不需要分包
-        const response = await fetch(url, {
-          method: 'POST',
-          body: outputData, // 这里的 outputData 直接就是 Uint8Array
-          headers: {
-            // 告诉服务器这是一个二进制流
-            'Content-Type': 'application/octet-stream'
-          },
-          // 设定超时保护（可选）
-          signal: AbortSignal.timeout(300000)
-        });
-
-        // 停止进度查询
-        if (progressTimer) {
-          clearInterval(progressTimer);
-        }
-
-        if (response.ok) {
-          const result = await response.text();
-          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-          log(`✅ 发送成功！耗时：${duration}秒，服务器回复：${result}`);
-        } else {
-          throw new Error(`服务器响应错误：${response.status}`);
-        }
-        await overlay.complete("同步成功"); // 👈 替换掉之前的 hide
-      } catch (error) {
-        // 停止进度查询
-        if (progressTimer) {
-          clearInterval(progressTimer);
-        }
-        
-        log(`❌ WiFi 发送失败：${error.message}`);
-        console.error(error);
-        await overlay.fail("WiFi 异常"); // 👈 替换掉之前的 hide
-      }
-    });
-
+    /** 量化图像并将结果存入 outputData，同时更新量化预览 */
     async function quantizeImage() {
-      // 1. 获取设备要求的宽高
       const targetWidth = parseInt(document.getElementById('width').value);
       const targetHeight = parseInt(document.getElementById('height').value);
 
       if (!targetWidth || !targetHeight || devicePalette.length === 0) {
-        alert("请先读取设备信息"); return;
+        alert('请先读取设备信息');
+        return;
       }
 
       const img = document.getElementById('previewImage');
@@ -851,10 +424,10 @@
       canvas.height = targetHeight;
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-      // 获取完整的 ImageData 对象
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data; // 这里的 data 是 [R,G,B,A, R,G,B,A...]
+      const data = imageData.data;
 
+      /* 亮度/对比度调整 */
       const brightness = parseInt(document.getElementById('brightness').value);
       const contrast = parseInt(document.getElementById('contrast').value);
       if (brightness !== 0 || contrast !== 0) {
@@ -869,129 +442,560 @@
         }
       }
 
-      // 假设 LUT_DATA 是你之前加载的 .bin 文件的 ArrayBuffer
-      if (useLut && typeof LUT_DATA !== 'undefined' && LUT_DATA) {
-        console.log("正在应用 LUT 色彩校正...");
-        const g_lut_data = new Uint8Array(LUT_DATA, 0x12); // 跳过 18 字节文件头
+      /* LUT 色彩校正 */
+      if (useLut && LUT_DATA) {
+        console.log('正在应用 LUT 色彩校正...');
+        const g_lut_data = new Uint8Array(LUT_DATA, 0x12);
 
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
-
-          // 按照 C 文件中的索引公式：
-          // lut_idx = ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3
           const lutIdx = ((b >> 2) + ((g & 0xFC) << 4) + ((r & 0xFC) << 10)) * 3;
 
-          // 从 LUT 中取出的数据通常是 BGR 顺序
-          data[i] = g_lut_data[lutIdx + 2]; // 转换后的 R
-          data[i + 1] = g_lut_data[lutIdx + 1]; // 转换后的 G
-          data[i + 2] = g_lut_data[lutIdx + 0]; // 转换后的 B
-          // Alpha 通道 data[i+3] 保持不变
+          data[i] = g_lut_data[lutIdx + 2]; // R (LUT 存 BGR)
+          data[i + 1] = g_lut_data[lutIdx + 1]; // G
+          data[i + 2] = g_lut_data[lutIdx + 0]; // B
         }
       }
 
-      // 2. 初始化 RgbQuant
+      /* RgbQuant 量化 */
       const rgbquant = new RgbQuant({
         colors: devicePalette.length,
         palette: devicePalette,
-
-        reIndex: false, // 必须为 false 以对应你的硬件索引
-        method: 1, // 强行全局量化
-        dithKern: "Stucki",
-        dithDelta: 0, // 设为 0，强制所有地方都参与抖动凑色
-        dithSerp: true, // 开启蛇形扫描，混合更均匀
-        useCache: false // 关闭缓存，让每个像素都精确计算距离
+        reIndex: false,
+        method: 1,
+        dithKern: 'Stucki',
+        dithDelta: 0,
+        dithSerp: true,
+        useCache: false
       });
 
-      // 【重要修正】直接传入 imageData 对象，获取像素索引数组
-      // 此时 indexData.length 理论上应等于 targetWidth * targetHeight
       const indexData = rgbquant.reduce(imageData, 2);
-
-      if (indexData.length !== targetWidth * targetHeight) {
-        console.error("❌ 警告：索引数组长度与分辨率不匹配！可能是 RgbQuant 配置或原图尺寸问题。");
-      }
-
       const pixelCount = targetWidth * targetHeight;
       const colorCount = devicePalette.length;
       let packedData;
 
-      console.log(`像素总数(W*H): ${pixelCount}`);
-      console.log(`索引数组长度: ${indexData.length}`);
-      console.log(`颜色总数: ${colorCount}`);
+      console.log(`像素总数: ${pixelCount}, 索引数组长度: ${indexData.length}, 颜色数: ${colorCount}`);
 
-      // 3. 严格按像素总数进行打包逻辑
-      if (colorCount <= 2) { // 【1bpp】 8像素 -> 1字节
+      /* 位深打包 */
+      if (colorCount <= 2) {
+        // 1bpp：8像素/字节
         packedData = new Uint8Array(Math.ceil(pixelCount / 8));
         for (let i = 0; i < pixelCount; i++) {
-          const val = indexData[i] & 0x01; const byteIdx = Math.floor(i / 8); const
-            bitShift = 7 - (i % 8); packedData[byteIdx] |= (val << bitShift);
+          const val = indexData[i] & 0x01;
+          const byteIdx = Math.floor(i / 8);
+          const bitShift = 7 - (i % 8);
+          packedData[byteIdx] |= (val << bitShift);
         }
-      }
-      else if (colorCount <= 4) {
-        const w = targetWidth; // 强制固定宽度，确保步进一致
-        const h = targetHeight;
-        const stride = w / 4; // 每行严格 326 字节
+      } else if (colorCount <= 4) {
+        // 2bpp：4像素/字节（行对齐）
+        const stride = targetWidth / 4;
+        packedData = new Uint8Array(stride * targetHeight);
 
-        packedData = new Uint8Array(stride * h);
-
-        for (let y = 0; y < h; y++) {
-          for (let x = 0; x < w; x++) {
-            // 计算在原始像素数组中的索引 (假设 indexData 是 w*h 长度)
-            const pixelIdx = y * w + x;
+        for (let y = 0; y < targetHeight; y++) {
+          for (let x = 0; x < targetWidth; x++) {
+            const pixelIdx = y * targetWidth + x;
             let val = (indexData[pixelIdx] !== undefined) ? (indexData[pixelIdx] & 0x03) : 0;
 
-            // 三色屏映射逻辑：如果索引是2（通常是红色），映射为3（硬件上的红色位）
+            // 3色屏特殊映射：索引2（红色）→ 0b11
             if (colorCount === 3 && val === 2) val = 3;
 
-            // 计算目标字节位置：行偏移 + 列偏移
             const byteIdx = y * stride + Math.floor(x / 4);
-
-            // 关键：第一个像素在最高位 (Bit 7-6)
             const bitShift = (3 - (x % 4)) * 2;
 
-            // 初始化字节（仅在处理每组4个像素的第一个时）
             if (x % 4 === 0) packedData[byteIdx] = 0;
-
-            // 按位压入
             packedData[byteIdx] |= (val << bitShift);
           }
         }
-      }
-      else {
-        // 【4bpp】 2像素 -> 1字节
+      } else {
+        // 4bpp：2像素/字节
         packedData = new Uint8Array(Math.ceil(pixelCount / 2));
         for (let i = 0; i < pixelCount; i++) {
           const val = indexData[i] & 0x0F;
           const byteIdx = Math.floor(i / 2);
-          const bitShift = (1 - (i % 2)) * 4; // 4, 0
+          const bitShift = (1 - (i % 2)) * 4;
           packedData[byteIdx] |= (val << bitShift);
         }
       }
 
-      // 4. 更新全局变量并输出结果
       outputData = packedData;
-      console.log(`✅ 打包成功! 最终输出长度: ${outputData.length} 字节`);
+      console.log(`✅ 打包完成，输出 ${outputData.length} 字节`);
 
-      // UI 预览
+      /* 量化预览 */
       const visualData = rgbquant.reduce(imageData);
       imageData.data.set(visualData);
       ctx.putImageData(imageData, 0, 0);
-      const quantizedImage = document.getElementById('quantizedImage');
-      quantizedImage.src = canvas.toDataURL();
-      quantizedImage.style.display = 'block';
-    };
+      const qImg = document.getElementById('quantizedImage');
+      qImg.src = canvas.toDataURL();
+      qImg.style.display = 'block';
+    }
 
     let adjustTimer = null;
     function scheduleQuantize() {
       clearTimeout(adjustTimer);
-      adjustTimer = setTimeout(async () => {
-        const result = await quantizeImage();
-        if (result) outputData = result;
-      }, 500);
+      adjustTimer = setTimeout(quantizeImage, 500);
     }
 
-    // 滑块数值实时显示
+    /* ══════════════════════════════════════════════════════════════════
+     *  高级模式切换
+     * ══════════════════════════════════════════════════════════════════ */
+    const advancedEls = [
+      document.getElementById('bleFilter'),
+      document.getElementById('setdevice'),
+      document.getElementById('advancedImageOps'),
+      document.getElementById('getIPBtn'),
+      document.getElementById('sendBtnBle'),
+      document.getElementById('saveToFlashBtn'),
+      document.getElementById('clearFlashBtn'),
+      document.getElementById('ClearBtn'),
+      document.getElementById('status'),
+    ];
+
+    document.getElementById('advancedMode').addEventListener('change', (e) => {
+      const on = e.target.checked;
+      advancedEls.forEach(el => { if (el) el.hidden = !on; });
+      localStorage.setItem('advancedMode', on ? '1' : '0');
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  页面初始化
+     * ══════════════════════════════════════════════════════════════════ */
+    window.addEventListener('DOMContentLoaded', () => {
+      // 恢复高级模式
+      const advOn = localStorage.getItem('advancedMode') === '1';
+      document.getElementById('advancedMode').checked = advOn;
+      advancedEls.forEach(el => { if (el) el.hidden = !advOn; });
+
+      // 恢复 WiFi 凭证
+      const savedSSID = localStorage.getItem('saved_ssid');
+      const savedPass = localStorage.getItem('saved_password');
+      if (savedSSID) document.getElementById('ssid').value = savedSSID;
+      if (savedPass) document.getElementById('password').value = savedPass;
+
+      // 初始蓝牙状态
+      updateBleStatus('disconnected');
+
+      // 加载 LUT
+      loadLUT();
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：蓝牙扫描 & 连接
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('scanBLEBtn').addEventListener('click', async (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+
+      if (!BLE.isSupported()) return;
+
+      /* 构建扫描参数 */
+      let serviceUuid = document.querySelector('#service').value;
+      if (serviceUuid.startsWith('0x')) serviceUuid = parseInt(serviceUuid);
+
+      const filters = [];
+      if (serviceUuid) filters.push({ services: [serviceUuid] });
+
+      const filterName = document.querySelector('#name').value;
+      if (filterName) filters.push({ name: filterName });
+
+      const filterPrefix = document.querySelector('#namePrefix').value;
+      if (filterPrefix) filters.push({ namePrefix: filterPrefix });
+
+      const scanOptions = document.querySelector('#allDevices').checked
+        ? { acceptAllDevices: true }
+        : { filters };
+
+      console.clear();
+
+      try {
+        /* 连接蓝牙，获取指定特征值 */
+        await BLE.connect(scanOptions, {
+          serviceUuid,
+          txUuid: 0xFF05,
+          rxUuid: 0xFF04,
+          statusUuid: 0xFF01,
+        });
+      } catch (error) {
+        log(`❌ 蓝牙连接失败: ${error.message}`);
+        alert(`获取蓝牙服务失败，请检查服务UUID是否正确`);
+        return;
+      }
+
+      /* 连接成功后立即获取设备信息 */
+      try {
+        const info = await EPD.getDeviceInfo();
+        applyDeviceInfoToUI(info);
+      } catch (error) {
+        log(`❌ 获取设备信息失败: ${error.message}`);
+        if (error.message.includes('空数据')) {
+          alert('❌ 读取到空数据，可能是新设备，需要先设置型号');
+        }
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：WiFi 配置
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('setWifiBtn').addEventListener('click', async () => {
+      const ssid = document.getElementById('ssid').value;
+      const password = document.getElementById('password').value;
+
+      if (!ssid || !password) { alert('请先输入完整的 SSID 和密码'); return; }
+      if (!BLE.state.ch_tx) { alert('蓝牙未连接'); return; }
+
+      localStorage.setItem('saved_ssid', ssid);
+      localStorage.setItem('saved_password', password);
+
+      try {
+        await EPD.setWifi(ssid, password);
+      } catch (error) {
+        log(`❌ WiFi 指令发送失败: ${error.message}`);
+        return;
+      }
+
+      overlay.show();
+      overlay.update('正在连接 WiFi，请稍候...');
+
+      // 等待设备启动再轮询
+      await new Promise(r => setTimeout(r, 2000));
+
+      try {
+        const ip = await EPD.waitForIp(
+          msg => overlay.update(msg),
+          2000,   // 每 2 秒查一次
+          60000   // 最多等 60 秒
+        );
+        BLE.state.deviceIp = ip;
+        document.getElementById('ipAddress').value = ip;
+        log(`🌐 WiFi 连接成功！IP: ${ip}`);
+        await overlay.complete(`WiFi 连接成功！IP: ${ip}`);
+      } catch (error) {
+        log(`❌ ${error.message}`);
+        await overlay.fail('WiFi 连接失败');
+      }
+    });
+
+    document.getElementById('getIPBtn').addEventListener('click', async () => {
+      document.getElementById('ipAddress').value = '';
+      try {
+        const ip = await EPD.getIp(5000);
+        if (ip === '0.0.0.0') {
+          log(`⚠️ 尚未获取到 IP，请检查 WiFi 是否连接成功 (当前: ${ip})`);
+        } else {
+          log(`🌐 获取成功! IP: ${ip}`);
+          BLE.state.deviceIp = ip;
+          document.getElementById('ipAddress').value = ip;
+        }
+      } catch (error) {
+        log(`❌ 获取 IP 失败: ${error.message}`);
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：设备配置
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('setdeviceBtn').addEventListener('click', async () => {
+      const modelName = document.getElementById('modelSet').value.trim();
+      if (!modelName) { alert('请先确保型号信息已读取（型号）'); return; }
+
+      try {
+        await EPD.setDeviceName(modelName);
+      } catch (error) {
+        log(`❌ 型号设置失败: ${error.message}`);
+      }
+    });
+
+    document.getElementById('setCustomNameBtn').addEventListener('click', async () => {
+      const customName = document.getElementById('customName').value.trim();
+      if (!customName) { alert('请先输入自定义名称'); return; }
+
+      try {
+        await EPD.setCustomName(customName);
+      } catch (error) {
+        log(`❌ 自定义名称设置失败: ${error.message}`);
+      }
+    });
+
+    document.getElementById('setModeBtn').addEventListener('click', async () => {
+      const modeStr = document.getElementById('woringModeSet').value;
+      if (!modeStr) { alert('请先选择工作模式'); return; }
+
+      const modeInt = parseInt(modeStr);
+      log(`当前选择的工作模式: ${modeInt}`);
+
+      try {
+        await EPD.setWorkingMode(modeInt);
+        log('✅ 发送成功');
+      } catch (error) {
+        log(`❌ 发送失败: ${error.message}`);
+        alert(`发送失败: ${error.message}`);
+      }
+    });
+
+    document.getElementById('ClearBtn').addEventListener('click', async () => {
+      if (!BLE.state.ch_tx) { alert('蓝牙未连接！'); return; }
+
+      try {
+        await EPD.clearScreen(selectedPaletteIndex);
+      } catch (error) {
+        log(`❌ 清屏指令发送失败: ${error.message}`);
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：图像发送（蓝牙）
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('sendBtnBle').addEventListener('click', async () => {
+      if (!outputData || outputData.length === 0) {
+        alert('请先进行图片量化，生成输出数据！');
+        return;
+      }
+      if (!BLE.state.ch_tx) {
+        alert('蓝牙未连接或写入特性不可用！');
+        return;
+      }
+
+      overlay.show();
+
+      try {
+        await EPD.sendImageBle(outputData, (pct) => overlay.update(pct.toFixed(1)));
+        await overlay.complete('同步成功');
+      } catch (error) {
+        log(`❌ 发送失败: ${error.message}`);
+        console.error(error);
+        await overlay.fail('蓝牙异常');
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：图像发送（WiFi HTTP）
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('sendBtnIP').addEventListener('click', async () => {
+      const targetIp = BLE.state.deviceIp || document.getElementById('ipAddress').value;
+
+      if (!targetIp || targetIp === '0.0.0.0') {
+        alert('请先获取有效的设备 IP 地址！');
+        return;
+      }
+      if (!outputData || outputData.length === 0) {
+        alert('请先进行图片量化，生成输出数据！');
+        return;
+      }
+
+      const url = `http://${targetIp}/upload_epd`;
+      const startTime = Date.now();
+      log(`🚀 开始 WiFi (HTTP) 发送，总计 ${outputData.length} 字节...`);
+
+      overlay.show();
+      overlay.update('0%');
+
+      /* 蓝牙进度查询定时器 */
+      let progressTimer = null;
+      if (BLE.state.ch_tx && BLE.state.ch_rx) {
+        progressTimer = setInterval(async () => {
+          try {
+            const pct = await EPD.queryProgress();
+            log(`📊 WiFi 传输进度: ${pct}%`);
+            overlay.update(pct.toString());
+          } catch (e) {
+            console.warn('查询进度失败:', e);
+          }
+        }, 2000);
+      }
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          body: outputData,
+          headers: { 'Content-Type': 'application/octet-stream' },
+          signal: AbortSignal.timeout(300000),
+        });
+
+        clearInterval(progressTimer);
+
+        if (response.ok) {
+          const result = await response.text();
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+          log(`✅ 发送成功！耗时 ${duration}s，服务器回复: ${result}`);
+          await overlay.complete('同步成功');
+        } else {
+          throw new Error(`服务器响应错误: ${response.status}`);
+        }
+      } catch (error) {
+        clearInterval(progressTimer);
+        log(`❌ WiFi 发送失败: ${error.message}`);
+        console.error(error);
+        await overlay.fail('WiFi 异常');
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：Flash 操作
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('saveToFlashBtn').addEventListener('click', async () => {
+      const targetIp = BLE.state.deviceIp || document.getElementById('ipAddress').value;
+      if (!targetIp || targetIp === '0.0.0.0') { alert('未获取到设备 IP'); return; }
+
+      const now = new Date();
+      const timestamp = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+        String(now.getHours()).padStart(2, '0'),
+        String(now.getMinutes()).padStart(2, '0'),
+        String(now.getSeconds()).padStart(2, '0'),
+      ].join('');
+
+      overlay.show();
+      overlay.update('正在持久化...');
+
+      try {
+        const response = await fetch(`http://${targetIp}/save_image?time=${timestamp}`, {
+          method: 'POST'
+        });
+        if (response.ok) {
+          await overlay.complete(`已保存: ${timestamp}`);
+        } else {
+          throw new Error('服务器保存失败');
+        }
+      } catch (error) {
+        await overlay.fail(error.message);
+      }
+    });
+
+    document.getElementById('clearFlashBtn').addEventListener('click', async () => {
+      if (!confirm('确定要删除 Flash 中保存的所有图片吗？此操作不可撤销。')) return;
+
+      const targetIp = BLE.state.deviceIp || document.getElementById('ipAddress').value;
+      if (!targetIp || targetIp === '0.0.0.0') { alert('未连接 WiFi 或未输入 IP'); return; }
+
+      overlay.show();
+      overlay.update('正在格式化/清空...');
+
+      try {
+        const response = await fetch(`http://${targetIp}/clear_flash`, { method: 'POST' });
+        const resultText = await response.text();
+
+        if (response.ok) {
+          await overlay.complete(
+            resultText.includes('scheduled')
+              ? '刷屏中，清空任务已排队...'
+              : 'Flash 已清空'
+          );
+        } else {
+          throw new Error('清空失败');
+        }
+      } catch (error) {
+        await overlay.fail(error.message);
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：Bin 文件导入/导出
+     * ══════════════════════════════════════════════════════════════════ */
+    document.getElementById('exportBinBtn').addEventListener('click', () => {
+      if (!outputData || outputData.length === 0) { alert('请先进行图片量化！'); return; }
+
+      const blob = new Blob([outputData], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `image_${document.getElementById('width').value}x${document.getElementById('height').value}.bin`;
+      document.body.appendChild(a);
+      a.click();
+
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+      log('✅ BIN 文件已导出');
+    });
+
+    document.getElementById('importBinBtn').addEventListener('click', () => {
+      document.getElementById('fileInput').click();
+    });
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const buffer = await file.arrayBuffer();
+      const importedData = new Uint8Array(buffer);
+
+      const w = parseInt(document.getElementById('width').value);
+      const h = parseInt(document.getElementById('height').value);
+      const colorCount = devicePalette.length;
+
+      if (!w || !h || colorCount === 0) {
+        alert('请先确保设备信息已读取（宽/高/调色板）');
+        return;
+      }
+
+      log(`开始反向还原: ${importedData.length} 字节 → ${w}×${h} 图像`);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(w, h);
+      const rgba = imageData.data;
+
+      for (let i = 0; i < w * h; i++) {
+        let paletteIndex = 0;
+
+        if (colorCount <= 2) {
+          const byte = importedData[Math.floor(i / 8)];
+          paletteIndex = (byte >> (7 - (i % 8))) & 0x01;
+        } else if (colorCount <= 4) {
+          const byte = importedData[Math.floor(i / 4)];
+          const shift = (3 - (i % 4)) * 2;
+          paletteIndex = (byte >> shift) & 0x03;
+          if (colorCount === 3 && paletteIndex === 3) paletteIndex = 2;
+        } else {
+          const byte = importedData[Math.floor(i / 2)];
+          const shift = (1 - (i % 2)) * 4;
+          paletteIndex = (byte >> shift) & 0x0F;
+        }
+
+        const rgb = devicePalette[paletteIndex] || [0, 0, 0];
+        const offset = i * 4;
+        rgba[offset] = rgb[0];
+        rgba[offset + 1] = rgb[1];
+        rgba[offset + 2] = rgb[2];
+        rgba[offset + 3] = 255;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      const qImg = document.getElementById('quantizedImage');
+      qImg.src = canvas.toDataURL();
+      qImg.style.display = 'block';
+      log('✅ 图像反向还原成功');
+    });
+
+    /* ══════════════════════════════════════════════════════════════════
+     *  事件处理：图像选择 & 调整参数
+     * ══════════════════════════════════════════════════════════════════ */
+    document.querySelector('.preview-box').addEventListener('click', () => {
+      document.getElementById('imageInput').click();
+    });
+
+    document.getElementById('imageInput').addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = document.getElementById('previewImage');
+        img.src = e.target.result;
+        img.style.display = 'block';
+
+        const box = img.closest('.preview-box');
+        const placeholder = box.querySelector('.placeholder');
+        if (placeholder) placeholder.style.display = 'none';
+
+        img.onload = quantizeImage;
+      };
+      reader.readAsDataURL(file);
+    });
+
     document.getElementById('brightness').addEventListener('input', (e) => {
       document.getElementById('brightnessVal').textContent = e.target.value;
       scheduleQuantize();
@@ -1005,508 +1009,16 @@
       btn.addEventListener('click', () => {
         const input = document.getElementById(btn.dataset.target);
         input.value = Math.min(100, Math.max(-100, +input.value + +btn.dataset.step));
-        input.dispatchEvent(new Event('input')); // 触发原有的联动逻辑
+        input.dispatchEvent(new Event('input'));
       });
     });
 
-    document.getElementById('quantizedImagebtn').addEventListener('click', async () => {
-      const result = await quantizeImage();
-      if (result) {
-        outputData = result;
-      }
-    });
+    document.getElementById('quantizedImagebtn').addEventListener('click', quantizeImage);
 
-    // 监听开关变化
     document.getElementById('useLutCheckbox').addEventListener('change', (e) => {
       useLut = e.target.checked;
-      log(`LUT 状态更改为: ${config.useLut}`);
+      log(`LUT 状态更改为: ${useLut}`);
     });
-
-    // 点击占位符或文字区域时触发文件选择
-    document.querySelector('.preview-box').addEventListener('click', () => {
-      console.log('点击了预览框');
-      document.getElementById('imageInput').click();
-    });
-
-    // 文件选择后显示预览
-    document.getElementById('imageInput').addEventListener('change', (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = document.getElementById('previewImage');
-        img.src = e.target.result;
-        img.style.display = 'block';
-
-        // 隐藏原图的 placeholder
-        const box = img.closest('.preview-box');
-        const placeholder = box.querySelector('.placeholder');
-        if (placeholder) placeholder.style.display = 'none';
-        // 图片加载完成后自动量化
-        img.onload = async () => {
-          const result = await quantizeImage();
-          if (result) {
-            outputData = result;
-          }
-        };
-      };
-      reader.readAsDataURL(file);
-    });
-
-    //document.querySelector('form').addEventListener('submit', function (event) {
-    document.getElementById('scanBLEBtn').addEventListener('click', () => {
-      event.stopPropagation();
-      event.preventDefault();
-
-      if (isWebBluetoothEnabled()) {
-        console.clear();
-        startBle();
-      }
-    });
-
-    document.getElementById('setWifiBtn').addEventListener('click', async () => {
-      const ssid = document.getElementById('ssid').value;
-      const password = document.getElementById('password').value;
-
-      if (!ssid || !password) {
-        alert("请先输入完整的 SSID 和密码");
-        return;
-      }
-
-      if (!bleState.ch_tx || !bleState.ch_rx) {
-        alert("蓝牙未连接");
-        return;
-      }
-
-      // 存储到 localStorage
-      localStorage.setItem('saved_ssid', ssid);
-      localStorage.setItem('saved_password', password);
-
-      // 1. 发送 WiFi 配置
-      try {
-        const encoder = new TextEncoder();
-        const ssidUint8 = encoder.encode(ssid);
-        const pwdUint8 = encoder.encode(password);
-
-        const totalLen = 1 + 1 + 1 + ssidUint8.length + pwdUint8.length;
-        const cmdFrame = new Uint8Array(totalLen);
-        cmdFrame[0] = 0x08;
-        cmdFrame[1] = ssidUint8.length;
-        cmdFrame[2] = pwdUint8.length;
-        cmdFrame.set(ssidUint8, 3);
-        cmdFrame.set(pwdUint8, 3 + ssidUint8.length);
-
-        await bleState.ch_tx.writeValue(cmdFrame);
-        log(`✅ WiFi 指令发送成功`);
-      } catch (error) {
-        log(`❌ WiFi 指令发送失败: ${error.message}`);
-        return;
-      }
-
-      // 2. 显示等待弹窗，开始轮询 IP
-      overlay.show();
-      overlay.update("正在连接 WiFi，请稍候...");
-
-      const POLL_INTERVAL = 2000; // 每2秒查一次
-      const POLL_TIMEOUT = 60000; // 最多等30秒
-      const startTime = Date.now();
-
-      const pollIp = async () => {
-        // 超时处理
-        if (Date.now() - startTime > POLL_TIMEOUT) {
-          await overlay.fail("wifi连接超时");
-          log("❌ WiFi 连接超时，请检查 SSID 和密码是否正确");
-          return;
-        }
-
-        try {
-          const payload = new Uint8Array([EPD_CMD.CMD_SET_WIFI]);
-          await bleState.ch_tx.writeValueWithResponse(payload);
-
-          const value = await withTimeout(bleState.ch_rx.readValue(), 3000, '读取IP');
-          console.log(value);
-
-          const ipString = new TextDecoder('utf-8').decode(value);
-          console.log(ipString);
-
-          if (ipString && ipString.trim() !== "0.0.0.0") {
-            // ✅ 连接成功
-            await overlay.complete(`WiFi 连接成功！IP 地址: ${ipString.trim()}`);
-            try {
-              bleState.deviceIp = ipString.trim();
-              document.getElementById('ipAddress').value = ipString.trim();
-              log(`🌐 WiFi 连接成功！IP 地址: ${ipString.trim()}`);
-            } catch (e) {
-              console.error("更新UI失败:", e);
-            }
-
-            return;
-          } else {
-            // 还没拿到 IP，继续等
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            await overlay.update(`正在连接 WiFi... (${elapsed}s)`);
-            setTimeout(pollIp, POLL_INTERVAL);
-          }
-        } catch (e) {
-          console.warn("轮询读取失败:", e);
-          if (Date.now() - startTime > POLL_TIMEOUT) {
-            await overlay.fail("wifi连接超时");
-            return;
-          }
-
-          const elapsed = Math.floor((Date.now() - startTime) / 1000);
-          overlay.update(`等待设备响应... (${elapsed}s)`);
-          setTimeout(pollIp, POLL_INTERVAL);
-        }
-      };
-
-      // 延迟1秒再开始轮询，给设备一点启动时间
-      setTimeout(pollIp, 2000);
-    });
-
-    document.getElementById('getIPBtn').addEventListener('click', async () => {
-      document.getElementById('ipAddress').value = "";
-      try {
-        const payload = new Uint8Array(1);
-        payload[0] = EPD_CMD.CMD_SET_WIFI;
-
-        await bleState.ch_tx.writeValueWithResponse(payload);
-        log("✅ 发送成功");
-
-        // 读取 IP 地址
-        const value = await withTimeout(bleState.ch_rx.readValue(), 5000, '读取IP');
-        log(`IP 地址: ${value}`);
-
-        // 3. 解码 DataView 为 字符串
-        const decoder = new TextDecoder('utf-8');
-        const ipString = decoder.decode(value);
-
-        if (ipString === "0.0.0.0") {
-          log(`⚠️ 尚未获取到 IP，请检查 WiFi 是否连接成功 (当前: ${ipString})`);
-        } else {
-          log(`🌐 获取成功! IP 地址: ${ipString}`);
-          bleState.deviceIp = ipString; // ✅ 存入全局变量
-          document.getElementById('ipAddress').value = ipString;
-        }
-
-      } catch (error) {
-        log(`❌ 发送失败: ${error}`);
-        console.error(error);
-      }
-    });
-
-    document.getElementById('setdeviceBtn').addEventListener('click', async () => {
-      const modelName = document.getElementById('modelSet').value.trim();
-
-      if (!modelName) {
-        alert("请先确保型号信息已读取（型号）");
-        return;
-      }
-
-      try {
-
-        const encoder = new TextEncoder();
-        const nameBytes = encoder.encode(modelName);
-
-        // 3. 构建发送缓冲区: [CMD(1字节), ...名称字节]
-        // 注意：如果你在 ESP32 代码中使用 (const char *)param->write.value + 1
-        // 那么你的蓝牙包必须一次性发完（或者确保分包逻辑正确）
-        const payload = new Uint8Array(1 + nameBytes.length);
-        payload[0] = EPD_CMD.CMD_SET_EPD_NAME;
-        payload.set(nameBytes, 1);
-
-        log(`📡 正在发送型号设置: ${modelName} (共 ${payload.length} 字节)`);
-
-        // 4. 通过 Web Bluetooth 写入特征值
-        // 使用 writeValueWithResponse 确保写入成功（会等待回复，更稳定）
-        await bleState.ch_tx.writeValueWithResponse(payload);
-
-        log("📨 指令已送达，等待硬件保存结果...");
-      } catch (error) {
-        log(`❌ 发送失败: ${error}`);
-        console.error(error);
-      }
-    });
-
-    document.getElementById('setCustomNameBtn').addEventListener('click', async () => {
-      const customName = document.getElementById('customName').value.trim();
-
-      if (!customName) {
-        alert("请先输入自定义名称");
-        return;
-      }
-
-      console.log(customName);
-
-      try {
-
-        const encoder = new TextEncoder();
-        const nameBytes = encoder.encode(customName);
-
-        // 3. 构建发送缓冲区: [CMD(1字节), ...名称字节]
-        // 注意：如果你在 ESP32 代码中使用 (const char *)param->write.value + 1
-        // 那么你的蓝牙包必须一次性发完（或者确保分包逻辑正确）
-        const payload = new Uint8Array(1 + nameBytes.length);
-        payload[0] = EPD_CMD.CMD_SET_CUSTOM_NAME;
-        payload.set(nameBytes, 1);
-
-        log(`📡 正在发送自定义名称设置: ${customName} (共 ${payload.length} 字节)`);
-
-        // 4. 通过 Web Bluetooth 写入特征值
-        // 使用 writeValueWithResponse 确保写入成功（会等待回复，更稳定）
-        await bleState.ch_tx.writeValueWithResponse(payload);
-
-        log("📨 指令已送达，等待硬件保存结果...");
-      } catch (error) {
-        log(`❌ 发送失败: ${error}`);
-        console.error(error);
-      }
-    });
-
-    document.getElementById('setModeBtn').addEventListener('click', async () => {
-      const modeStr = document.getElementById('woringModeSet').value;
-      if (!modeStr) {
-        alert("请先输入工作模式");
-        return;
-      }
-      const modeInt = parseInt(modeStr);
-
-      log(`当前选择的工作模式: ${modeInt}`);
-
-      try {
-        const payload = new Uint8Array(2);
-        payload[0] = EPD_CMD.CMD_SET_WORKING_MODE;
-        payload[1] = modeInt; // 这里直接存入数字 0 或 1，而不是字符码
-        log(`📡 正在发送工作模式设置: ${modeInt} (十六进制: 0x${payload[0].toString(16)}, 0x${payload[1].toString(16)})`);
-
-        await bleState.ch_tx.writeValueWithResponse(payload);
-        log("✅ 发送成功");
-      } catch (error) {
-        log(`❌ 发送失败: ${error}`);
-        alert(`发送失败: ${error.message}`);
-      }
-    });
-
-    document.getElementById('ClearBtn').addEventListener('click', async () => {
-      if (!bleState.ch_tx) {
-        alert("蓝牙未连接！");
-        return;
-      }
-
-      try {
-        // 构造命令数据包：byte1 为清屏指令 0x06，byte2 为颜色索引
-        const clearCmd = new Uint8Array(2);
-        clearCmd[0] = EPD_CMD.CMD_EPD_CLEAR; // 0x06
-        clearCmd[1] = selectedPaletteIndex; // 选中的索引值
-
-        log(`📡 发送清屏指令: CMD=0x06, ColorIndex=${selectedPaletteIndex}`);
-
-        // 通过 FF05 特征值发送
-        await bleState.ch_tx.writeValue(clearCmd);
-        log("✅ 清屏指令发送成功");
-      } catch (error) {
-        log(`❌ 清屏指令发送失败: ${error.message}`);
-      }
-    });
-
-    document.getElementById('exportBinBtn').addEventListener('click', () => {
-      if (!outputData || outputData.length === 0) {
-        alert("请先进行图片量化！");
-        return;
-      }
-
-      // 创建 Blob 对象
-      const blob = new Blob([outputData], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-
-      // 创建隐藏的下载链接
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `image_${document.getElementById('width').value}x${document.getElementById('height').value}.bin`;
-      document.body.appendChild(a);
-      a.click();
-
-      // 清理
-      setTimeout(() => {
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }, 0);
-
-      console.log("✅ BIN文件已导出");
-    });
-
-    // 触发文件选择
-    document.getElementById('importBinBtn').addEventListener('click', () => {
-      document.getElementById('fileInput').click();
-    });
-
-    // 处理文件读取与反向渲染
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const buffer = await file.arrayBuffer();
-      const importedData = new Uint8Array(buffer);
-
-      const w = parseInt(document.getElementById('width').value);
-      const h = parseInt(document.getElementById('height').value);
-      const colorCount = devicePalette.length;
-
-      if (!w || !h || colorCount === 0) {
-        alert("请先确保设备信息已读取（宽/高/调色板）");
-        return;
-      }
-
-      console.log(`开始还原: ${importedData.length} 字节 -> ${w}x${h} 图像`);
-
-      // 1. 创建用于显示的 Canvas
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.createImageData(w, h);
-      const rgba = imageData.data;
-
-      // 2. 反向解码逻辑 (Unpacking)
-      for (let i = 0; i < w * h; i++) {
-        let paletteIndex = 0;
-
-        if (colorCount <= 2) {
-          // 1bpp 还原
-          const byte = importedData[Math.floor(i / 8)];
-          const bitShift = 7 - (i % 8);
-          paletteIndex = (byte >> bitShift) & 0x01;
-        }
-        else if (colorCount <= 4) {
-          // 2bpp 还原
-          const byte = importedData[Math.floor(i / 4)];
-          const bitShift = (3 - (i % 4)) * 2;
-          paletteIndex = (byte >> bitShift) & 0x03;
-
-          // 3色屏特殊映射还原 (0b11 -> 索引2)
-          if (colorCount === 3 && paletteIndex === 3) paletteIndex = 2;
-        }
-        else {
-          // 4bpp 还原
-          const byte = importedData[Math.floor(i / 2)];
-          const bitShift = (1 - (i % 2)) * 4;
-          paletteIndex = (byte >> bitShift) & 0x0F;
-        }
-
-        // 3. 从调色板取色并填入 RGBA 数组
-        const rgb = devicePalette[paletteIndex] || [0, 0, 0];
-        const offset = i * 4;
-        rgba[offset] = rgb[0]; // R
-        rgba[offset + 1] = rgb[1]; // G
-        rgba[offset + 2] = rgb[2]; // B
-        rgba[offset + 3] = 255; // A (不透明)
-      }
-
-      // 4. 将还原后的图像显示到页面
-      ctx.putImageData(imageData, 0, 0);
-      const quantizedImage = document.getElementById('quantizedImage');
-      quantizedImage.src = canvas.toDataURL();
-      quantizedImage.style.display = 'block';
-
-      log("✅ 图像反向还原成功");
-    });
-
-    document.getElementById('saveToFlashBtn').addEventListener('click', async () => {
-      const targetIp = bleState.deviceIp || document.getElementById('ipInput').value;
-      if (!targetIp || targetIp === "0.0.0.0") {
-        alert("未获取到设备 IP");
-        return;
-      }
-
-      // 生成时间戳 YYYYMMDDhhmmss
-      const now = new Date();
-      const timestamp = now.getFullYear().toString() +
-        (now.getMonth() + 1).toString().padStart(2, '0') +
-        now.getDate().toString().padStart(2, '0') +
-        now.getHours().toString().padStart(2, '0') +
-        now.getMinutes().toString().padStart(2, '0') +
-        now.getSeconds().toString().padStart(2, '0');
-
-      overlay.show();
-      overlay.update("正在持久化...");
-
-      try {
-        const response = await fetch(`http://${targetIp}/save_image?time=${timestamp}`, {
-          method: 'POST'
-        });
-
-        if (response.ok) {
-          await overlay.complete(`已保存: ${timestamp}`);
-        } else {
-          throw new Error("服务器保存失败");
-        }
-      } catch (error) {
-        await overlay.fail(error.message);
-      }
-    });
-
-    document.getElementById('clearFlashBtn').addEventListener('click', async () => {
-      if (!confirm("确定要删除 Flash 中保存的所有图片吗？此操作不可撤销。")) {
-        return;
-      }
-
-      const targetIp = bleState.deviceIp || document.getElementById('ipAddress').value;
-      if (!targetIp || targetIp === "0.0.0.0") {
-        alert("未连接 WiFi 或未输入 IP");
-        return;
-      }
-
-      overlay.show();
-      overlay.update("正在格式化/清空...");
-
-      try {
-        const response = await fetch(`http://${targetIp}/clear_flash`, {
-          method: 'POST'
-        });
-        const resultText = await response.text();
-
-        if (response.ok) {
-          // 如果 ESP32 返回的信息包含 "预约" 类似的字样
-          if (resultText.includes("scheduled")) {
-            await overlay.complete("刷屏中，清空任务已排队...");
-          } else {
-            await overlay.complete("Flash 已清空");
-          }
-        } else {
-          throw new Error("清空失败");
-        }
-      } catch (error) {
-        await overlay.fail(error.message);
-      }
-    });
-
-    function updateBleStatus(state) {
-      const statusDot = document.querySelector('.status-dot');
-      const statusText = document.querySelector('.status-text');
-
-      if (!statusDot || !statusText) return;
-
-      // 清除所有状态类
-      statusDot.classList.remove('connected', 'connecting');
-
-      switch (state) {
-        case 'connecting':
-          statusDot.classList.add('connecting');
-          statusText.textContent = '蓝牙连接中...';
-          break;
-        case 'connected':
-          statusDot.classList.add('connected');
-          statusText.textContent = '蓝牙已连接';
-          break;
-        case 'disconnected':
-          statusText.textContent = '蓝牙未连接';
-          break;
-        case 'error':
-          statusText.textContent = '蓝牙连接出错';
-          break;
-      }
-    }
 
   </script>
 </body>
