@@ -294,12 +294,18 @@
     </div><!-- #imageSection -->
 
     <!-- ── 旋转控制 ──────────────────────────────────────────── -->
-    <div id="rotateControls" style="display:flex; justify-content:center; gap:20px; margin:10px 0;">
+    <div id="rotateControls">
       <button type="button" id="rotateLeft">
-        🛑 左转 90°
+        ↪️ 逆时针 90°
       </button>
       <button type="button" id="rotateRight">
-        🛑 右转 90°
+        ↩️ 顺时针 90°
+      </button>
+      <button type="button" id="flipHorizontal">
+        ↔️ 水平镜像
+      </button>
+      <button type="button" id="flipVertical">
+        ↕️ 垂直镜像
       </button>
     </div>
 
@@ -583,7 +589,7 @@
         movable: true,
         zoomable: true,
         rotatable: true,
-        scalable: false,
+        scalable: true,
         cropBoxMovable: false,    // fixed crop box：框不可拖动
         cropBoxResizable: false,    // fixed crop box：框不可缩放
         guides: true,
@@ -869,6 +875,33 @@
         // 右转：相对旋转 +90 度
         cropperInstance.rotate(90);
         scheduleQuantize(); // 旋转后触发量化更新
+      }
+    });
+
+    document.getElementById('flipHorizontal').addEventListener('click', () => {
+      if (cropperInstance) {
+        // 获取当前的 scaleX 状态，默认为 1
+        const data = cropperInstance.getData();
+        const currentScaleX = data.scaleX || 1;
+
+        // 设置为相反数 (1 变 -1, -1 变 1)
+        cropperInstance.scaleX(-currentScaleX);
+
+        scheduleQuantize(); // 镜像后触发量化更新
+      }
+    });
+
+    // 上下镜像 (垂直翻转)
+    document.getElementById('flipVertical').addEventListener('click', () => {
+      if (cropperInstance) {
+        // 获取当前的 scaleY 状态，默认为 1
+        const data = cropperInstance.getData();
+        const currentScaleY = data.scaleY || 1;
+
+        // 设置为相反数
+        cropperInstance.scaleY(-currentScaleY);
+
+        scheduleQuantize(); // 镜像后触发量化更新
       }
     });
 
