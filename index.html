@@ -20,7 +20,7 @@
       </button>
       <button class="status-btn" data-target="window2">
         <span class="status-dot"></span>
-        <span class="status-text">建设中</span>
+        <span class="status-text">WiFi</span>
       </button>
     </div>
     <div id="advancedToggle">
@@ -65,21 +65,20 @@
 
   <!-- 弹窗2 -->
   <div id="window2" class="status-window">
-    <div class="window-row">
-      <label>连接状态</label>
-      <span>已连接</span>
-    </div>
-    <div class="window-row">
-      <label>IP地址</label>
-      <input type="text" placeholder="192.168.1.1">
-    </div>
-    <div class="window-row">
-      <label>自动重连</label>
-      <label class="toggle-switch">
-        <input type="checkbox">
-        <span class="toggle-thumb"></span>
-      </label>
-    </div>
+    <form>
+      <div class="window-row">
+        <label>SSID:</label> <input id="ssid" type="text" value="Outside">
+      </div>
+      <div class="window-row">
+        <label>Password:</label> <input id="password" type="text" value="yeslcd123">
+      </div>
+      <div class="window-row">
+        <label>IP:</label>
+        <input id="ipAddress" type="text" readonly>
+        <button type="button" id="getIPBtn">Get IP</button>
+        <button type="button" id="setWifiBtn">Set WiFi</button>
+      </div>
+    </form>
   </div>
 
   <div id="mainContainer">
@@ -110,21 +109,7 @@
     <!-- ── 蓝牙 ─────────────────────────────────────────────── -->
     
     <br>
-    <!-- ── WiFi ──────────────────────────────────────────────── -->
-    <div id="wifiInfo" class="control-group">
-      <div class="row">
-        <label>SSID:</label> <input id="ssid" type="text" value="Outside">
-        <label>Password:</label> <input id="password" type="text" value="yeslcd123">
-      </div>
-      <div class="row">
-        <label>IP:</label>
-        <input id="ipAddress" type="text" readonly>
-        <button id="getIPBtn">Get IP</button>
-        <button id="setWifiBtn">Set WiFi</button>
-      </div>
-    </div>
 
-    <br>
     <!-- ── 设备配置 ───────────────────────────────────────────── -->
     <div id="setdevice" class="control-group">
       <div class="row">
@@ -402,8 +387,8 @@
     const pad3 = n => String(n).padStart(3, '0');
 
     function updateBleStatus(state, deviceName) {
-      const dot = document.querySelector('.status-dot');
-      const text = document.querySelector('.status-text');
+      const dot = document.querySelector('.status-btn[data-target="window1"] .status-dot');
+      const text = document.querySelector('.status-btn[data-target="window1"] .status-text');
       const deviceLabel = document.getElementById('bleDeviceLabel');
       if (!dot || !text) return;
       dot.classList.remove('connected', 'connecting');
@@ -421,6 +406,22 @@
       } else if (state === 'disconnected' && deviceLabel) {
         deviceLabel.textContent = 'Scan Bluetooth Devices';
       }
+    }
+
+    function updateWifiStatus(state, ip) {
+      const dot = document.querySelector('.status-btn[data-target="window2"] .status-dot');
+      const text = document.querySelector('.status-btn[data-target="window2"] .status-text');
+      if (!dot || !text) return;
+      dot.classList.remove('connected', 'connecting');
+      const map = {
+        connecting: ['connecting', 'WiFi连接中...'],
+        connected: ['connected', `WiFi已连接: ${ip}`],
+        disconnected: [null, 'WiFi未连接'],
+        error: [null, 'WiFi连接出错'],
+      };
+      const [cls, label] = map[state] || [null, state];
+      if (cls) dot.classList.add(cls);
+      text.textContent = label;
     }
 
     /** 把设备信息写入 UI，并在必要时刷新 Cropper 比例 */
@@ -738,7 +739,6 @@
       document.getElementById('bleFilter'),
       document.getElementById('setdevice'),
       document.getElementById('advancedImageOps'),
-      document.getElementById('getIPBtn'),
       document.getElementById('sendBtnBle'),
       document.getElementById('saveToFlashBtn'),
       document.getElementById('clearFlashBtn'),
@@ -957,9 +957,10 @@
       localStorage.setItem('saved_ssid', ssid);
       localStorage.setItem('saved_password', pwd);
 
-      try { await EPD.setWifi(ssid, pwd); }
+      try { await EPD.setWifi(ssid, pwd); } 
       catch (e) { log(`❌ WiFi 指令发送失败: ${e.message}`); return; }
 
+      updateWifiStatus('connecting');
       overlay.show();
       overlay.update('正在连接 WiFi，请稍候...');
       await new Promise(r => setTimeout(r, 2000));
@@ -969,9 +970,11 @@
         BLE.state.deviceIp = ip;
         document.getElementById('ipAddress').value = ip;
         log(`🌐 WiFi 连接成功！IP: ${ip}`);
+        updateWifiStatus('connected', ip);
         await overlay.complete(`WiFi 连接成功！IP: ${ip}`);
       } catch (e) {
         log(`❌ ${e.message}`);
+        updateWifiStatus('error');
         await overlay.fail('WiFi 连接失败');
       }
     });
@@ -982,12 +985,17 @@
         const ip = await EPD.getIp(5000);
         if (ip === '0.0.0.0') {
           log(`⚠️ 尚未获取到 IP (当前: ${ip})`);
+          updateWifiStatus('disconnected');
         } else {
           BLE.state.deviceIp = ip;
           document.getElementById('ipAddress').value = ip;
           log(`🌐 IP: ${ip}`);
+          updateWifiStatus('connected', ip);
         }
-      } catch (e) { log(`❌ 获取 IP 失败: ${e.message}`); }
+      } catch (e) {
+        log(`❌ 获取 IP 失败: ${e.message}`);
+        updateWifiStatus('error');
+      }
     });
 
     /* ══════════════════════════════════════════════════════════

@@ -290,7 +290,9 @@ button {
   font-size: 14px;
 }
 
-.status-window #scanBLEBtn {
+.status-window #scanBLEBtn,
+.status-window #getIPBtn,
+.status-window #setWifiBtn {
   padding: 6px 14px;
   font-size: 14px;
   margin: 0;
@@ -299,10 +301,19 @@ button {
 
 .status-window .window-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.status-window .window-row input[type="text"] {
+  flex: 1;
+  min-width: 150px;
+}
+
+.status-window .window-row button {
+  flex-shrink: 0;
 }
 
 .status-window .window-row:last-child {
