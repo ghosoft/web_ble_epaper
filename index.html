@@ -34,21 +34,33 @@
 
   <!-- 弹窗1 -->
   <div id="window1" class="status-window">
-    <div class="window-row">
-      <label>状态标签</label>
-      <span>正常</span>
-    </div>
-    <div class="window-row">
-      <label>设备名称</label>
-      <input type="text" placeholder="输入名称">
-    </div>
-    <div class="window-row">
-      <label>启用功能</label>
-      <label class="toggle-switch">
-        <input type="checkbox">
-        <span class="toggle-thumb"></span>
-      </label>
-    </div>
+    <form>
+      <div class="window-row" id="bleFilter">
+        <label for="allDevices">All Devices</label>
+        <input id="allDevices" type="checkbox">
+      </div>
+      <div class="window-row">
+        <label for="service">Service</label>
+        <input id="service" type="text" placeholder="Bluetooth Service" value="0x00FF">
+      </div>
+      <div class="window-row">
+        <label for="characteristic">Char</label>
+        <input id="characteristic" type="text" placeholder="Bluetooth Characteristic">
+      </div>
+      <div class="window-row">
+        <label for="namePrefix">Prefix</label>
+        <input id="namePrefix" type="text" placeholder="Device Name Prefix" value="YES">
+      </div>
+      <input id="name" type="text" placeholder="Device Name" hidden>
+      <div id="bleStatusIndicator" class="ble-status">
+        <span class="status-dot"></span>
+        <span class="status-text">蓝牙未连接</span>
+      </div>
+      <div class="window-row">
+        <label id="bleDeviceLabel">Scan Bluetooth Devices</label>
+        <button type="button" id="scanBLEBtn">Scan</button>
+      </div>
+    </form>
   </div>
 
   <!-- 弹窗2 -->
@@ -96,27 +108,7 @@
     <h1>Web BLE 电子纸</h1>
 
     <!-- ── 蓝牙 ─────────────────────────────────────────────── -->
-    <div id="bleInfo" class="control-group">
-      <form>
-        <div class="row" id="bleFilter">
-          <label for="allDevices">All Devices</label>
-          <input id="allDevices" type="checkbox">
-          <input id="service" type="text" placeholder="Bluetooth Service" value="0x00FF">
-          <input id="characteristic" type="text" placeholder="Bluetooth Characteristic">
-          <input id="name" type="text" placeholder="Device Name" hidden>
-          <input id="namePrefix" type="text" placeholder="Device Name Prefix" value="YES">
-        </div>
-        <div id="bleStatusIndicator" class="ble-status">
-          <span class="status-dot"></span>
-          <span class="status-text">蓝牙未连接</span>
-        </div>
-        <div class="row">
-          <label id="bleDeviceLabel">Scan Bluetooth Devices</label>
-          <button id="scanBLEBtn">Scan</button>
-        </div>
-      </form>
-    </div>
-
+    
     <br>
     <!-- ── WiFi ──────────────────────────────────────────────── -->
     <div id="wifiInfo" class="control-group">
