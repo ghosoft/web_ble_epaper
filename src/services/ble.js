@@ -115,9 +115,9 @@ const BLE = (() => {
     _log('全部特征值 UUID:', state.characteristics.map(c => c.uuid).join(' | '));
     if (bluefy) await delay(500);
 
-    state.ch_tx     = await state.service.getCharacteristic(txUuid);
-    state.ch_rx     = await state.service.getCharacteristic(rxUuid);
-    state.ch_status = await state.service.getCharacteristic(statusUuid);
+    state.ch_tx     = await _withTimeout(state.service.getCharacteristic(txUuid), 5000, 'TX特征');
+    state.ch_rx     = await _withTimeout(state.service.getCharacteristic(rxUuid), 5000, 'RX特征');
+    state.ch_status = await _withTimeout(state.service.getCharacteristic(statusUuid), 5000, '状态特征');
 
     _log('[TX ]', _describeChar(state.ch_tx));
     _log('[RX ]', _describeChar(state.ch_rx));

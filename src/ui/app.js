@@ -207,6 +207,7 @@
         });
       } catch (e) {
         App.log(`❌ 蓝牙连接失败: ${e.message}`);
+        updateBleStatus('disconnected');
         return;
       }
 
