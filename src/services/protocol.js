@@ -29,6 +29,7 @@ const EPD = (() => {
     SET_WORKING_MODE: 0x09, // 设置工作模式：[0x09, mode]（0=正常, 1=相册）
     SET_CUSTOM_NAME:  0x0A, // 设置自定义蓝牙名称：[0x0A, ...name_utf8]
     QUERY_PROGRESS:   0x0B, // 查询传输进度（返回 2 字节百分比）
+    WIFI_SCAN:        0x0C, // 触发 WiFi 扫描（读 FF04 取 JSON 结果）
   });
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -190,6 +191,33 @@ const EPD = (() => {
     }
 
     throw new Error('WiFi 连接超时，请检查 SSID 和密码是否正确');
+  }
+
+  /* ── WiFi 扫描 ─────────────────────────────────────────────────────────── */
+
+  /**
+   * 触发 ESP32 扫描周围 WiFi 热点，轮询等待结果
+   * @returns {Promise<Array<[string,number,number]>>}  [SSID, RSSI, authMode]
+   */
+  async function scanWifi() {
+    _log('📡 请求 WiFi 扫描...');
+    await BLE.write(new Uint8Array([CMD.WIFI_SCAN]));
+
+    for (let retry = 0; retry < 10; retry++) {
+      await _delay(1000);
+      try {
+        const value = await BLE.read(3000);
+        const text = _dec.decode(value);
+        const data = JSON.parse(text);
+        if (Array.isArray(data)) {
+          _log(`✅ 扫描完成，发现 ${data.length} 个网络`);
+          return data;
+        }
+      } catch (e) {
+        _log(`⚠️ 扫描轮询第 ${retry + 1} 次: ${e.message}`);
+      }
+    }
+    throw new Error('WiFi 扫描超时');
   }
 
   /* ── 设备配置 ─────────────────────────────────────────────────────────── */
@@ -376,6 +404,7 @@ const EPD = (() => {
     setWifi,
     getIp,
     waitForIp,
+    scanWifi,
     /* 设备配置 */
     setDeviceName,
     setCustomName,
