@@ -41,10 +41,19 @@ const BLE = (() => {
   let _onStatusChange = null;   // (state: 'connecting'|'connected'|'disconnected'|'error') => void
   let _onNotification = null;   // (event: Event) => void  ← FF01 通知
   let _onDisconnected = null;   // () => void
+  let _isRetrying = false;      // 自动重试中，抑制断开回调
 
   /* ═══════════════════════════════════════════════════════════════════════
    *  公开 API
    * ═══════════════════════════════════════════════════════════════════════ */
+
+  function _uuidMatch(char, uuidNum) {
+    var hex = uuidNum.toString(16).padStart(4, '0');
+    var cuuid = typeof char.uuid === 'string'
+      ? char.uuid
+      : '0000' + char.uuid.toString(16).padStart(4, '0');
+    return cuuid.toLowerCase().indexOf(hex) !== -1;
+  }
 
   /**
    * 初始化：注册回调函数
@@ -98,47 +107,70 @@ const BLE = (() => {
     /* 断线监听 */
     state.device.addEventListener('gattserverdisconnected', _handleDisconnected);
 
-    _log('正在连接 GATT Server...');
-    state.server = await _withTimeout(state.device.gatt.connect(), 25000, 'GATT连接');
-    if (bluefy) await delay(500);
+    /* 连接 + 自动重试（iOS Bluefy 偶发首次连接挂起） */
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (attempt > 1) {
+          _isRetrying = true;
+          _log(`🔄 正在重试 (第${attempt}次)...`);
+          await delay(1000);
+        }
 
-    _log('正在获取主服务...');
-    state.service = await _withTimeout(
-      state.server.getPrimaryService(serviceUuid), 25000, '服务获取'
-    );
-    if (bluefy) await delay(500);
+        state.server = await _withTimeout(state.device.gatt.connect(), 25000, 'GATT连接');
+        if (bluefy) await delay(500);
 
-    _log('正在枚举特征值...');
-    state.characteristics = await _withTimeout(
-      state.service.getCharacteristics(), 5000, '特征枚举'
-    );
-    _log('全部特征值 UUID:', state.characteristics.map(c => c.uuid).join(' | '));
-    if (bluefy) await delay(500);
+        _log('正在获取主服务...');
+        state.service = await _withTimeout(
+          state.server.getPrimaryService(serviceUuid), 25000, '服务获取'
+        );
+        if (bluefy) await delay(500);
 
-    state.ch_tx     = await _withTimeout(state.service.getCharacteristic(txUuid), 5000, 'TX特征');
-    state.ch_rx     = await _withTimeout(state.service.getCharacteristic(rxUuid), 5000, 'RX特征');
-    state.ch_status = await _withTimeout(state.service.getCharacteristic(statusUuid), 5000, '状态特征');
+        _log('正在枚举特征值...');
+        state.characteristics = await _withTimeout(
+          state.service.getCharacteristics(), 5000, '特征枚举'
+        );
+        _log('全部特征值 UUID:', state.characteristics.map(c => c.uuid).join(' | '));
+        if (bluefy) await delay(500);
 
-    _log('[TX ]', _describeChar(state.ch_tx));
-    _log('[RX ]', _describeChar(state.ch_rx));
-    _log('[STS]', _describeChar(state.ch_status));
-    if (bluefy) await delay(500);
+        state.ch_tx     = state.characteristics.find(c => _uuidMatch(c, txUuid));
+        state.ch_rx     = state.characteristics.find(c => _uuidMatch(c, rxUuid));
+        state.ch_status = state.characteristics.find(c => _uuidMatch(c, statusUuid));
+        if (!state.ch_tx || !state.ch_rx || !state.ch_status) {
+          throw new Error('特征值获取不完整');
+        }
 
-    /* 尝试订阅通知，Bluefy 可能不支持，降级为无通知模式 */
-    try {
-      _log('正在订阅通知...');
-      await _withTimeout(state.ch_status.startNotifications(), 5000, '通知启动');
-      if (_onNotification) {
-        state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+        _log('[TX ]', _describeChar(state.ch_tx));
+        _log('[RX ]', _describeChar(state.ch_rx));
+        _log('[STS]', _describeChar(state.ch_status));
+        if (bluefy) await delay(500);
+
+        /* 尝试订阅通知 */
+        try {
+          _log('正在订阅通知...');
+          await _withTimeout(state.ch_status.startNotifications(), 5000, '通知启动');
+          if (_onNotification) {
+            state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+          }
+          _log('✅ 通知订阅成功');
+        } catch (e) {
+          _log(`⚠️ 通知订阅失败 (${e.message})，降级为轮询模式`);
+        }
+
+        state.connected = true;
+        _isRetrying = false;
+        _log('✅ BLE 全部通道就绪 (TX / RX / STS)');
+        _onStatusChange?.('connected', state.device.name);
+        return;
+      } catch (e) {
+        _log(`❌ 第${attempt}次连接失败: ${e.message}`);
+        _resetState();
+        if (attempt === 2) {
+          _isRetrying = false;
+          _onStatusChange?.('disconnected');
+          throw e;
+        }
       }
-      _log('✅ 通知订阅成功');
-    } catch (e) {
-      _log(`⚠️ 通知订阅失败 (${e.message})，降级为轮询模式`);
     }
-
-    state.connected = true;
-    _log('✅ BLE 全部通道就绪 (TX / RX / STS)');
-    _onStatusChange?.('connected', state.device.name);
   }
 
   /**
@@ -192,6 +224,7 @@ const BLE = (() => {
   }
 
   function _handleDisconnected() {
+    if (_isRetrying) return;
     _log('⚠️ 蓝牙连接意外断开！');
     _resetState();
     _onStatusChange?.('disconnected');
