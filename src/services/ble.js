@@ -104,72 +104,110 @@ const BLE = (() => {
     state.device = await navigator.bluetooth.requestDevice(scanOptions);
     if (bluefy) await delay(500);
 
-    /* 断线监听 */
+    /* 断线监听（两路径共用） */
     state.device.addEventListener('gattserverdisconnected', _handleDisconnected);
 
-    /* 连接 + 自动重试（iOS Bluefy 偶发首次连接挂起） */
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        if (attempt > 1) {
-          _isRetrying = true;
-          _log(`🔄 正在重试 (第${attempt}次)...`);
-          await delay(1000);
-        }
-
-        state.server = await _withTimeout(state.device.gatt.connect(), 25000, 'GATT连接');
-        if (bluefy) await delay(500);
-
-        _log('正在获取主服务...');
-        state.service = await _withTimeout(
-          state.server.getPrimaryService(serviceUuid), 25000, '服务获取'
-        );
-        if (bluefy) await delay(500);
-
-        _log('正在枚举特征值...');
-        state.characteristics = await _withTimeout(
-          state.service.getCharacteristics(), 5000, '特征枚举'
-        );
-        _log('全部特征值 UUID:', state.characteristics.map(c => c.uuid).join(' | '));
-        if (bluefy) await delay(500);
-
-        state.ch_tx     = state.characteristics.find(c => _uuidMatch(c, txUuid));
-        state.ch_rx     = state.characteristics.find(c => _uuidMatch(c, rxUuid));
-        state.ch_status = state.characteristics.find(c => _uuidMatch(c, statusUuid));
-        if (!state.ch_tx || !state.ch_rx || !state.ch_status) {
-          throw new Error('特征值获取不完整');
-        }
-
-        _log('[TX ]', _describeChar(state.ch_tx));
-        _log('[RX ]', _describeChar(state.ch_rx));
-        _log('[STS]', _describeChar(state.ch_status));
-        if (bluefy) await delay(500);
-
-        /* 尝试订阅通知 */
+    if (bluefy) {
+      /* ══════════════════════════════════════════════════════════════════
+       * Bluefy (iOS) 路径
+       * getCharacteristic() 在 WKWebView 上可能卡死，改用
+       * getCharacteristics() 批量枚举 + find() UUID 匹配
+       * ══════════════════════════════════════════════════════════════════ */
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          _log('正在订阅通知...');
-          await _withTimeout(state.ch_status.startNotifications(), 5000, '通知启动');
-          if (_onNotification) {
-            state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+          if (attempt > 1) {
+            _isRetrying = true;
+            _log(`🔄 正在重试 (第${attempt}次)...`);
+            await delay(1000);
           }
-          _log('✅ 通知订阅成功');
-        } catch (e) {
-          _log(`⚠️ 通知订阅失败 (${e.message})，降级为轮询模式`);
-        }
 
-        state.connected = true;
-        _isRetrying = false;
-        _log('✅ BLE 全部通道就绪 (TX / RX / STS)');
-        _onStatusChange?.('connected', state.device.name);
-        return;
-      } catch (e) {
-        _log(`❌ 第${attempt}次连接失败: ${e.message}`);
-        _resetState();
-        if (attempt === 2) {
+          state.server = await _withTimeout(state.device.gatt.connect(), 25000, 'GATT连接');
+          await delay(500);
+
+          _log('正在获取主服务...');
+          state.service = await _withTimeout(
+            state.server.getPrimaryService(serviceUuid), 25000, '服务获取'
+          );
+          await delay(500);
+
+          _log('正在枚举特征值...');
+          state.characteristics = await _withTimeout(
+            state.service.getCharacteristics(), 5000, '特征枚举'
+          );
+          _log('全部特征值 UUID:', state.characteristics.map(c => c.uuid).join(' | '));
+          await delay(500);
+
+          state.ch_tx     = state.characteristics.find(c => _uuidMatch(c, txUuid));
+          state.ch_rx     = state.characteristics.find(c => _uuidMatch(c, rxUuid));
+          state.ch_status = state.characteristics.find(c => _uuidMatch(c, statusUuid));
+          if (!state.ch_tx || !state.ch_rx || !state.ch_status) {
+            throw new Error('特征值获取不完整');
+          }
+
+          _log('[TX ]', _describeChar(state.ch_tx));
+          _log('[RX ]', _describeChar(state.ch_rx));
+          _log('[STS]', _describeChar(state.ch_status));
+          await delay(500);
+
+          try {
+            _log('正在订阅通知...');
+            await _withTimeout(state.ch_status.startNotifications(), 5000, '通知启动');
+            if (_onNotification) {
+              state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+            }
+            _log('✅ 通知订阅成功');
+          } catch (e) {
+            _log(`⚠️ 通知订阅失败 (${e.message})，降级为轮询模式`);
+          }
+
           _isRetrying = false;
-          _onStatusChange?.('disconnected');
-          throw e;
+          state.connected = true;
+          _log('✅ BLE 全部通道就绪 (TX / RX / STS)');
+          _onStatusChange?.('connected', state.device.name);
+          return;
+        } catch (e) {
+          _log(`❌ 第${attempt}次连接失败: ${e.message}`);
+          _resetState();
+          if (attempt === 2) {
+            _isRetrying = false;
+            _onStatusChange?.('disconnected');
+            throw e;
+          }
         }
       }
+    } else {
+      /* ══════════════════════════════════════════════════════════════════
+       * 标准浏览器路径（Android Chrome）
+       * getCharacteristic() 逐个获取，已验证稳定
+       * ══════════════════════════════════════════════════════════════════ */
+      state.server = await state.device.gatt.connect();
+
+      _log('正在获取主服务...');
+      state.service = await state.server.getPrimaryService(serviceUuid);
+
+      _log('正在获取特征值...');
+      state.ch_status = await state.service.getCharacteristic(statusUuid);
+      state.ch_rx     = await state.service.getCharacteristic(rxUuid);
+      state.ch_tx     = await state.service.getCharacteristic(txUuid);
+
+      _log('[TX ]', _describeChar(state.ch_tx));
+      _log('[RX ]', _describeChar(state.ch_rx));
+      _log('[STS]', _describeChar(state.ch_status));
+
+      try {
+        _log('正在订阅通知...');
+        await state.ch_status.startNotifications();
+        if (_onNotification) {
+          state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+        }
+        _log('✅ 通知订阅成功');
+      } catch (e) {
+        _log(`⚠️ 通知订阅失败 (${e.message})，降级为轮询模式`);
+      }
+
+      state.connected = true;
+      _log('✅ BLE 全部通道就绪 (TX / RX / STS)');
+      _onStatusChange?.('connected', state.device.name);
     }
   }
 
@@ -182,9 +220,22 @@ const BLE = (() => {
    */
   async function write(data, withResponse = true) {
     if (!state.ch_tx) throw new Error('BLE 未连接，TX 特征值不可用');
-    return withResponse
-      ? state.ch_tx.writeValueWithResponse(data)
-      : state.ch_tx.writeValue(data);
+    const methods = [];
+    if (withResponse) {
+      methods.push(() => state.ch_tx.writeValueWithResponse(data));
+    }
+    methods.push(() => state.ch_tx.writeValue(data));
+    let lastErr;
+    for (const fn of methods) {
+      try {
+        const r = await fn();
+        return r;
+      } catch (e) {
+        lastErr = e;
+        _log(`⚠️ 写入尝试失败: ${e.message}`);
+      }
+    }
+    throw lastErr || new Error('写入失败');
   }
 
   /**

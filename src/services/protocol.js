@@ -201,7 +201,9 @@ const EPD = (() => {
    */
   async function scanWifi() {
     _log('📡 请求 WiFi 扫描...');
+    _log('📡 发送扫描指令...');
     await BLE.write(new Uint8Array([CMD.WIFI_SCAN]));
+    _log('📡 指令已送达，等待结果...');
 
     for (let retry = 0; retry < 10; retry++) {
       await _delay(1000);
