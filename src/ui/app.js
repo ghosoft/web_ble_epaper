@@ -279,6 +279,68 @@
       }
     });
 
+    document.getElementById('scanWifiBtn').addEventListener('click', async () => {
+      if (!BLE.state.ch_tx) { App.log('⚠️ 蓝牙未连接'); return; }
+
+      const container = document.getElementById('scanResultContainer');
+      const list = document.getElementById('scanResultList');
+      const status = document.getElementById('scanStatus');
+      const btn = document.getElementById('scanWifiBtn');
+
+      btn.disabled = true;
+      container.style.display = 'block';
+      list.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">扫描中...</div>';
+      status.textContent = '正在扫描 WiFi 热点...';
+
+      try {
+        const networks = await EPD.scanWifi();
+        status.textContent = `找到 ${networks.length} 个网络`;
+
+        if (networks.length === 0) {
+          list.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">未扫描到 WiFi 网络（隐藏 SSID 请手动输入）</div>';
+          return;
+        }
+
+        list.innerHTML = '';
+        networks.forEach(net => {
+          const div = document.createElement('div');
+          div.className = 'scan-item';
+
+          const lock = document.createElement('span');
+          lock.className = 'lock-icon';
+          lock.textContent = net[2] === 0 ? '🔓' : '🔒';
+
+          const name = document.createElement('span');
+          name.className = 'ssid-name';
+          name.textContent = net[0];
+
+          const rssi = document.createElement('span');
+          rssi.className = 'ssid-rssi';
+          const bars = net[1] > -60 ? '📶' : '📶';
+          rssi.textContent = `${bars} ${net[1]}dBm`;
+
+          div.appendChild(lock);
+          div.appendChild(name);
+          div.appendChild(rssi);
+
+          div.addEventListener('click', () => {
+            document.querySelectorAll('.scan-item').forEach(el => el.classList.remove('selected'));
+            div.classList.add('selected');
+            document.getElementById('ssid').value = net[0];
+            status.textContent = `已选择: ${net[0]}`;
+          });
+
+          list.appendChild(div);
+        });
+      } catch (e) {
+        App.log(`⚠️ WiFi 扫描失败: ${e.message}，请手动输入 SSID`);
+        list.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">扫描失败，请手动输入 SSID 和密码</div>';
+        status.textContent = '扫描失败';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
     document.getElementById('getIPBtn').addEventListener('click', async () => {
       document.getElementById('ipAddress').value = '';
       try {
