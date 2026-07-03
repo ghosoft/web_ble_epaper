@@ -422,12 +422,16 @@
         }, 2000);
       }
 
+      const abortCtrl = new AbortController();
+      const fetchTimeout = setTimeout(() => abortCtrl.abort(), 300000);
+
       try {
         const res = await fetch(`http://${targetIp}/upload_epd`, {
           method: 'POST', body: App.state.outputData,
           headers: { 'Content-Type': 'application/octet-stream' },
-          signal: AbortSignal.timeout(300000),
+          signal: abortCtrl.signal,
         });
+        clearTimeout(fetchTimeout);
         clearInterval(progressTimer);
         if (res.ok) {
           const txt = await res.text();
@@ -437,6 +441,7 @@
           throw new Error(`服务器响应错误: ${res.status}`);
         }
       } catch (e) {
+        clearTimeout(fetchTimeout);
         clearInterval(progressTimer);
         App.log(`❌ WiFi 发送失败: ${e.message}`);
         await App.overlay.fail('WiFi 异常');
