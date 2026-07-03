@@ -14,6 +14,15 @@
 
 const BLE = (() => {
 
+  /* ── 平台检测 ─────────────────────────────────────────────────────────── */
+  function isBluefy() {
+    return navigator.userAgent.includes('Bluefy');
+  }
+
+  function delay(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
   /* ── 连接状态 ─────────────────────────────────────────────────────────── */
   const state = {
     connected:       false,
@@ -77,27 +86,34 @@ const BLE = (() => {
   async function connect(scanOptions, { serviceUuid, txUuid, rxUuid, statusUuid }) {
     if (!isSupported()) throw new Error('Web Bluetooth 不支持');
 
+    const bluefy = isBluefy();
+    _log(`平台检测: ${bluefy ? 'Bluefy (iOS)' : '标准浏览器'}`);
+
     _onStatusChange?.('connecting');
     _log('正在请求蓝牙设备...', JSON.stringify(scanOptions));
 
     state.device = await navigator.bluetooth.requestDevice(scanOptions);
+    if (bluefy) await delay(500);
 
     /* 断线监听 */
     state.device.addEventListener('gattserverdisconnected', _handleDisconnected);
 
     _log('正在连接 GATT Server...');
     state.server = await _withTimeout(state.device.gatt.connect(), 25000, 'GATT连接');
+    if (bluefy) await delay(500);
 
     _log('正在获取主服务...');
     state.service = await _withTimeout(
       state.server.getPrimaryService(serviceUuid), 25000, '服务获取'
     );
+    if (bluefy) await delay(500);
 
     _log('正在枚举特征值...');
     state.characteristics = await _withTimeout(
       state.service.getCharacteristics(), 5000, '特征枚举'
     );
     _log('全部特征值 UUID:', state.characteristics.map(c => c.uuid).join(' | '));
+    if (bluefy) await delay(500);
 
     state.ch_tx     = await state.service.getCharacteristic(txUuid);
     state.ch_rx     = await state.service.getCharacteristic(rxUuid);
@@ -106,11 +122,18 @@ const BLE = (() => {
     _log('[TX ]', _describeChar(state.ch_tx));
     _log('[RX ]', _describeChar(state.ch_rx));
     _log('[STS]', _describeChar(state.ch_status));
+    if (bluefy) await delay(500);
 
-    _log('正在订阅通知...');
-    await _withTimeout(state.ch_status.startNotifications(), 5000, '通知启动');
-    if (_onNotification) {
-      state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+    /* 尝试订阅通知，Bluefy 可能不支持，降级为无通知模式 */
+    try {
+      _log('正在订阅通知...');
+      await _withTimeout(state.ch_status.startNotifications(), 5000, '通知启动');
+      if (_onNotification) {
+        state.ch_status.addEventListener('characteristicvaluechanged', _onNotification);
+      }
+      _log('✅ 通知订阅成功');
+    } catch (e) {
+      _log(`⚠️ 通知订阅失败 (${e.message})，降级为轮询模式`);
     }
 
     state.connected = true;
