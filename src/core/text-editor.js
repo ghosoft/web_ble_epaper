@@ -64,7 +64,7 @@
       try {
         const input = document.getElementById('textInput');
         const text = input.value.trim();
-        if (!text) { alert('请输入文字'); return; }
+        if (!text) { alert(I18n.t('alert.enterText')); return; }
         const fontSize = parseInt(document.getElementById('textFontSize').value);
         const color = document.getElementById('textColorPicker').value;
         const c = this.canvas;
@@ -83,7 +83,7 @@
         this._showCanvas();
         this.render();
       } catch (err) {
-        App.log(`❌ 添加文字错误: ${err.message}`);
+        App.log(I18n.t('log.textAddError', { msg: err.message }));
       }
     },
 
@@ -216,7 +216,7 @@
           }
         });
       } catch (err) {
-        App.log(`❌ Canvas 渲染错误: ${err.message}`);
+        App.log(I18n.t('log.canvasRenderError', { msg: err.message }));
         try {
           const c = this.canvas;
           const ctx = this.ctx;

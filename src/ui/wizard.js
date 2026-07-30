@@ -9,12 +9,12 @@
     if (currentStep === totalSteps) {
       btn.style.backgroundColor = '#28a745';
       btn.style.color = '#fff';
-      lbl.textContent = '发送';
+      lbl.textContent = I18n.t('btn.send');
       lbl.className = 'nav-label active';
     } else {
       btn.style.backgroundColor = '';
       btn.style.color = '';
-      lbl.textContent = '下一步';
+      lbl.textContent = I18n.t('btn.nextStep');
       lbl.className = 'nav-label';
     }
   }
