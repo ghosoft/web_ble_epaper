@@ -59,7 +59,7 @@ const BLE = (() => {
    */
   function isSupported() {
     if (navigator.bluetooth) return true;
-    _log('Web Bluetooth API 不可用，请启用 Experimental Web Platform features。');
+    _log(I18n.t('log.bleNotSupported'));
     return false;
   }
 
@@ -75,7 +75,7 @@ const BLE = (() => {
    * @returns {Promise<void>}
    */
   async function connect(scanOptions, { serviceUuid, txUuid, rxUuid, statusUuid }) {
-    if (!isSupported()) throw new Error('Web Bluetooth 不支持');
+    if (!isSupported()) throw new Error(I18n.t('log.bleNotSupported'));
 
     _onStatusChange?.('connecting');
     _log('正在请求蓝牙设备...', JSON.stringify(scanOptions));
@@ -114,7 +114,7 @@ const BLE = (() => {
     }
 
     state.connected = true;
-    _log('✅ BLE 全部通道就绪 (TX / RX / STS)');
+    _log(I18n.t('log.bleAllChannelsReady'));
     _onStatusChange?.('connected', state.device.name);
   }
 
@@ -126,7 +126,7 @@ const BLE = (() => {
    * @returns {Promise<void>}
    */
   async function write(data, withResponse = true) {
-    if (!state.ch_tx) throw new Error('BLE 未连接，TX 特征值不可用');
+    if (!state.ch_tx) throw new Error(I18n.t('log.bleTxUnavailable'));
     return withResponse
       ? state.ch_tx.writeValueWithResponse(data)
       : state.ch_tx.writeValue(data);
@@ -139,7 +139,7 @@ const BLE = (() => {
    * @returns {Promise<DataView>}
    */
   async function read(timeoutMs = 5000) {
-    if (!state.ch_rx) throw new Error('BLE 未连接，RX 特征值不可用');
+    if (!state.ch_rx) throw new Error(I18n.t('log.bleRxUnavailable'));
     return _withTimeout(state.ch_rx.readValue(), timeoutMs, 'RX 读取');
   }
 
@@ -163,13 +163,13 @@ const BLE = (() => {
     return Promise.race([
       promise,
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`超时: ${label} (${ms}ms)`)), ms)
+        setTimeout(() => reject(new Error(I18n.t('log.bleTimeout', { label, ms }))), ms)
       )
     ]);
   }
 
   function _handleDisconnected() {
-    _log('⚠️ 蓝牙连接意外断开！');
+    _log(I18n.t('log.bleDisconnected'));
     _resetState();
     _onStatusChange?.('disconnected');
     _onDisconnected?.();

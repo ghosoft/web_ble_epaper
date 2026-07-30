@@ -19,21 +19,21 @@
       this.progress.style.display = 'block';
       this.startTime = Date.now();
       this.timerInterval = setInterval(() => {
-        this.time.innerText = `${((Date.now() - this.startTime) / 1000).toFixed(1)}s`;
+        this.time.innerText = I18n.t('overlay.time', { s: ((Date.now() - this.startTime) / 1000).toFixed(1) });
       }, 100);
     },
 
     update(val) {
       if (!this.progress) return;
       if (typeof val === 'number' || /^\d+(\.\d+)?$/.test(String(val))) {
-        this.progress.innerText = `${val}%`;
+        this.progress.innerText = I18n.t('overlay.progress', { val });
       } else {
         this.progress.innerText = val;
       }
     },
 
     async complete(msg) {
-      msg = msg || '传输成功';
+      msg = msg || I18n.t('overlay.success');
       clearInterval(this.timerInterval);
       this.box.classList.add('success');
       this.status.innerText = `✅ ${msg}`;
@@ -44,7 +44,7 @@
     },
 
     async fail(msg) {
-      msg = msg || '传输失败';
+      msg = msg || I18n.t('overlay.fail');
       clearInterval(this.timerInterval);
       if (!this.box) return;
       this.box.classList.add('warning');

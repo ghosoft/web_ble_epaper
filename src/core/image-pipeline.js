@@ -7,9 +7,9 @@
       App.state.LUT_DATA = await res.arrayBuffer();
       const bytes = new Uint8Array(App.state.LUT_DATA);
       const head = Array.from(bytes.slice(0, 18)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      App.log('✅ LUT 加载成功 | 大小:', App.state.LUT_DATA.byteLength, '字节 | 前18字节:', head);
+      App.log(I18n.t('log.lutLoaded', { bytes: App.state.LUT_DATA.byteLength, head }));
     } catch (err) {
-      App.log('LUT 加载失败:', err.message);
+      App.log(I18n.t('log.lutLoadFail', { msg: err.message }));
     }
   };
 
@@ -22,16 +22,16 @@
     const targetH = parseInt(document.getElementById('height').value);
 
     if (!targetW || !targetH) {
-      App.log('⚠️ 尚未获取设备尺寸，量化跳过');
+      App.log(I18n.t('log.noDeviceSize'));
       return;
     }
     if (App.state.devicePalette.length === 0) {
-      App.log('⚠️ 调色板为空，量化跳过');
+      App.log(I18n.t('log.paletteEmpty'));
       return;
     }
 
     App.overlay.show();
-    App.overlay.update('数据处理中,请稍后');
+    App.overlay.update(I18n.t('overlay.processing'));
     await new Promise(r => setTimeout(r, 0));
 
     const qBox = document.getElementById('quantizedBox');
@@ -39,7 +39,7 @@
 
     const compositedCanvas = App.textEdit.getCompositedCanvas();
     if (!compositedCanvas) {
-      App.log('⚠️ 文字编辑预览尚未就绪');
+      App.log(I18n.t('log.textEditorNotReady'));
       qBox.classList.remove('updating');
       return;
     }
@@ -114,7 +114,7 @@
     }
 
     App.state.outputData = packedData;
-    App.log(`✅ 量化完成，输出 ${App.state.outputData.length} 字节`);
+    App.log(I18n.t('log.quantizeDone', { bytes: App.state.outputData.length }));
 
     const visualData = rq.reduce(imageData);
     imageData.data.set(visualData);

@@ -1,12 +1,12 @@
 (function(App) {
 
   const tourSteps = [
-    { target: '.status-btn[data-target="window1"]', text: '点击「蓝牙」按钮，扫描并连接您的 EPD 设备。连接成功后会自动获取设备信息。', placement: 'bottom' },
-    { target: '.status-btn[data-target="window2"]', text: '连接设备后，打开你手机系统的热点设置界面, 设置好ssid和密码后 启动你手机的热点功能, 把你设置热点的ssid和密码, 输入到本网页的wifi连接设置里面的对应位置, 最后点击本网页的连接wifi按钮', placement: 'bottom' },
-    { target: '#uploadImageBtn', text: '点击「选择图片」上传您想要显示在电子纸上的图片。您可以在裁剪步骤中翻转和旋转图片。', placement: 'top' },
-    { target: '#nextStepBtn', text: '点击「下一步」进入文字编辑步骤。您可以在此步骤中为图片添加文字、拖拽位置和自定义颜色。', placement: 'left' },
-    { target: '#nextStepBtn', text: '再次点击「下一步」进入量化步骤。您可以调整图片的亮度和对比度，并启用色彩增强（LUT）。', placement: 'right' },
-    { target: '#sendArea', text: '最后，点击「蓝牙发送」或「WiFi 发送」将处理好的图片传输到您的 EPD 设备上显示。', placement: 'top' },
+    { target: '.status-btn[data-target="window1"]', key: 'tour.step1', placement: 'bottom' },
+    { target: '.status-btn[data-target="window2"]', key: 'tour.step2', placement: 'bottom' },
+    { target: '#uploadImageBtn', key: 'tour.step3', placement: 'top' },
+    { target: '#nextStepBtn', key: 'tour.step4', placement: 'left' },
+    { target: '#nextStepBtn', key: 'tour.step5', placement: 'right' },
+    { target: '#sendArea', key: 'tour.step6', placement: 'top' },
   ];
 
   let tourActive = false;
@@ -82,7 +82,7 @@
     if (!targetEl) { tourEnd(); return; }
 
     document.getElementById('tourStepNum').textContent = idx + 1;
-    document.getElementById('tourText').textContent = step.text;
+    document.getElementById('tourText').textContent = I18n.t(step.key);
 
     const isFirst = idx === 0;
     const isLast = idx === tourSteps.length - 1;

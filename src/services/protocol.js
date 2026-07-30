@@ -78,16 +78,15 @@ const EPD = (() => {
    *   { name, width, height, bpp, palette: [[r,g,b], ...], raw }
    */
   async function getDeviceInfo() {
-    _log('📡 发送 CMD_REPORT_EPD_INFO...');
+    _log(I18n.t('log.cmdSendInfo'));
     await BLE.write(new Uint8Array([CMD.REPORT_EPD_INFO]));
 
     const value = await BLE.read(5000);
     const bytes = new Uint8Array(value.buffer);
-    _log(`✅ 读取设备信息，共 ${bytes.length} 字节:`,
-      bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+    _log(I18n.t('log.cmdReadInfo', { bytes: bytes.length, hex: bytes.map(b => b.toString(16).padStart(2, '0')).join(' ') }));
 
     if (bytes.length === 0) {
-      throw new Error('读取到空数据，可能是新设备，需要先设置型号');
+      throw new Error(I18n.t('error.emptyData'));
     }
 
     return parseDeviceInfo(value);
@@ -101,7 +100,7 @@ const EPD = (() => {
    */
   function parseDeviceInfo(dataView) {
     const jsonStr = _dec.decode(dataView);
-    _log('设备信息 JSON:', jsonStr);
+    _log(I18n.t('log.cmdInfoJson'), jsonStr);
 
     const obj = JSON.parse(jsonStr);
 
@@ -110,7 +109,7 @@ const EPD = (() => {
       : [];
 
     return {
-      name:    obj.name   ?? '未知',
+      name:    obj.name   ?? 'Unknown',
       width:   obj.width  ?? 0,
       height:  obj.height ?? 0,
       bpp:     obj.bpp    ?? 0,
@@ -139,9 +138,9 @@ const EPD = (() => {
     frame.set(ssidBytes, 3);
     frame.set(pwdBytes,  3 + ssidBytes.length);
 
-    _log(`📡 发送 WiFi 配置: SSID="${ssid}" (共 ${frame.length} 字节)`);
+    _log(I18n.t('log.cmdSendWifi', { ssid, len: frame.length }));
     await BLE.write(frame, false); // 发送后不等应答，设备会自行连接
-    _log('✅ WiFi 指令发送完成');
+    _log(I18n.t('log.cmdWifiDone'));
   }
 
   /**
@@ -155,7 +154,7 @@ const EPD = (() => {
     await BLE.write(new Uint8Array([CMD.SET_WIFI]));
     const value    = await BLE.read(timeoutMs);
     const ipString = _dec.decode(value).trim();
-    _log(`📡 IP 查询结果: "${ipString}"`);
+    _log(I18n.t('log.cmdIpResult', { ip: ipString }));
     return ipString;
   }
 
@@ -180,7 +179,7 @@ const EPD = (() => {
       try {
         const ip = await getIp(3000);
         if (ip && ip !== '0.0.0.0') {
-          _log(`🌐 WiFi 已连接，IP: ${ip}`);
+          _log(I18n.t('log.cmdWifiIpConnected', { ip }));
           return ip;
         }
       } catch (e) {
@@ -190,7 +189,7 @@ const EPD = (() => {
       await _delay(pollIntervalMs);
     }
 
-    throw new Error('WiFi 连接超时，请检查 SSID 和密码是否正确');
+    throw new Error(I18n.t('error.wifiTimeout'));
   }
 
   /* ── WiFi 扫描 ─────────────────────────────────────────────────────────── */
@@ -200,7 +199,7 @@ const EPD = (() => {
    * @returns {Promise<Array<[string,number,number]>>}  [SSID, RSSI, authMode]
    */
   async function scanWifi() {
-    _log('📡 请求 WiFi 扫描...');
+    _log(I18n.t('log.cmdWifiScanReq'));
     await BLE.write(new Uint8Array([CMD.WIFI_SCAN]));
 
     for (let retry = 0; retry < 10; retry++) {
@@ -210,14 +209,14 @@ const EPD = (() => {
         const text = _dec.decode(value);
         const data = JSON.parse(text);
         if (Array.isArray(data)) {
-          _log(`✅ 扫描完成，发现 ${data.length} 个网络`);
+          _log(I18n.t('log.cmdWifiScanDone', { count: data.length }));
           return data;
         }
       } catch (e) {
         _log(`⚠️ 扫描轮询第 ${retry + 1} 次: ${e.message}`);
       }
     }
-    throw new Error('WiFi 扫描超时');
+    throw new Error(I18n.t('error.wifiScanTimeout'));
   }
 
   /* ── 设备配置 ─────────────────────────────────────────────────────────── */
@@ -234,9 +233,9 @@ const EPD = (() => {
     payload[0] = CMD.SET_EPD_NAME;
     payload.set(nameBytes, 1);
 
-    _log(`📡 发送型号设置: "${modelName}" (${payload.length} 字节)`);
+    _log(I18n.t('log.cmdSetModel', { name: modelName, len: payload.length }));
     await BLE.write(payload);
-    _log('📨 型号指令已送达，等待硬件确认...');
+    _log(I18n.t('log.cmdSetModelSent'));
   }
 
   /**
@@ -251,9 +250,9 @@ const EPD = (() => {
     payload[0] = CMD.SET_CUSTOM_NAME;
     payload.set(nameBytes, 1);
 
-    _log(`📡 发送自定义名称: "${customName}" (${payload.length} 字节)`);
+    _log(I18n.t('log.cmdSetCustomName', { name: customName, len: payload.length }));
     await BLE.write(payload);
-    _log('📨 自定义名称指令已送达');
+    _log(I18n.t('log.cmdSetCustomNameSent'));
   }
 
   /**
@@ -264,9 +263,9 @@ const EPD = (() => {
    */
   async function setWorkingMode(mode) {
     const payload = new Uint8Array([CMD.SET_WORKING_MODE, mode & 0xFF]);
-    _log(`📡 发送工作模式: ${mode} (0x${mode.toString(16).padStart(2, '0')})`);
+    _log(I18n.t('log.cmdSetMode', { mode, hex: mode.toString(16).padStart(2, '0') }));
     await BLE.write(payload);
-    _log('✅ 工作模式设置完成');
+    _log(I18n.t('log.cmdSetModeDone'));
   }
 
   /**
@@ -277,9 +276,9 @@ const EPD = (() => {
    */
   async function clearScreen(colorIndex) {
     const payload = new Uint8Array([CMD.EPD_CLEAR, colorIndex & 0xFF]);
-    _log(`📡 发送清屏指令: CMD=0x06, ColorIndex=${colorIndex}`);
+    _log(I18n.t('log.cmdClearScreen', { idx: colorIndex }));
     await BLE.write(payload, false);
-    _log('✅ 清屏指令发送完成');
+    _log(I18n.t('log.cmdClearScreenDone'));
   }
 
   /* ── 图像传输（BLE）─────────────────────────────────────────────────── */
@@ -298,7 +297,7 @@ const EPD = (() => {
     const totalBytes   = data.length;
     const totalPackets = Math.ceil(totalBytes / BLE_CHUNK_SIZE);
 
-    _log(`开始 BLE 图像传输: ${totalBytes} 字节，${totalPackets} 包，每包 ${BLE_CHUNK_SIZE} 字节数据`);
+    _log(I18n.t('log.cmdBleTransfer', { bytes: totalBytes, pkts: totalPackets, chunk: BLE_CHUNK_SIZE }));
 
     /* 1. 开始帧：[0x03, b3, b2, b1, b0] */
     const startCmd = new Uint8Array(5);
@@ -307,7 +306,7 @@ const EPD = (() => {
     startCmd[2] = (totalBytes >>> 16) & 0xFF;
     startCmd[3] = (totalBytes >>>  8) & 0xFF;
     startCmd[4] =  totalBytes         & 0xFF;
-    _log(`📡 发送开始帧: 总大小 ${totalBytes} 字节`);
+    _log(I18n.t('log.cmdStartFrame', { bytes: totalBytes }));
     await BLE.write(startCmd, false);
 
     /* 2. 数据帧：[0x04, idx_b3..b0, ...payload] */
@@ -328,15 +327,15 @@ const EPD = (() => {
 
       const pct = (i + 1) / totalPackets * 100;
       if (i % 10 === 0 || i === totalPackets - 1) {
-        _log(`进度: ${pct.toFixed(1)}% (${i + 1}/${totalPackets})`);
+        _log(I18n.t('log.cmdProgress', { pct: pct.toFixed(1), cur: i + 1, total: totalPackets }));
       }
       onProgress?.(pct);
     }
 
     /* 3. 结束帧 */
-    _log('📡 发送结束帧');
+    _log(I18n.t('log.cmdEndFrame'));
     await BLE.write(new Uint8Array([CMD.END_WRITE_DATA]), false);
-    _log('✅ BLE 图像传输完成');
+    _log(I18n.t('log.cmdBleTransferDone'));
   }
 
   /* ── 进度查询 ─────────────────────────────────────────────────────────── */
@@ -372,13 +371,13 @@ const EPD = (() => {
 
     switch (code) {
       case 0x81:
-        message = '✅ 硬件反馈: 型号设置成功，已保存到 NVS';
+        message = I18n.t('notify.modelSetOk');
         break;
       case 0x8F:
-        message = '❌ 硬件反馈: 型号设置失败（型号无效）';
+        message = I18n.t('notify.modelSetFail');
         break;
       default:
-        message = `📡 收到未知状态码: 0x${code.toString(16).padStart(2, '0')}`;
+        message = I18n.t('notify.unknownCode', { code: code.toString(16).padStart(2, '0') });
     }
 
     return { code, message };

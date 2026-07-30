@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BLE 电子纸</title>
+  <title data-i18n="page.title">BLE 电子纸</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
 </head>
@@ -16,24 +16,28 @@
     <div id="statusButtons">
       <button class="status-btn" data-target="window1">
         <span class="status-dot"></span>
-        <span id="bleStatusLabel" class="status-text">蓝牙</span>
+        <span id="bleStatusLabel" class="status-text" data-i18n="status.ble">蓝牙</span>
       </button>
       <button class="status-btn" data-target="window2">
         <span class="status-dot"></span>
-        <span id="wifiStatusLabel" class="status-text">WiFi</span>
+        <span id="wifiStatusLabel" class="status-text" data-i18n="status.wifi">WiFi</span>
       </button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;">
+      <select id="langSwitcher" style="background:rgba(100,100,100,0.85);color:#fff;border:none;border-radius:20px;padding:6px 12px;font-size:13px;cursor:pointer;outline:none;">
+        <option value="zh">中文</option>
+        <option value="en">EN</option>
+      </select>
       <a id="githubLink" href="https://github.com/Martlet-Tech/web_ble_epaper" target="_blank" title="GitHub 仓库">
         <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
       </a>
       <button id="guideBtn" class="status-btn" style="display:flex;align-items:center;gap:4px;background:rgba(100,100,100,0.85);">
         <span style="font-size:15px;">📖</span>
-        <span>引导</span>
+        <span data-i18n="btn.guide">引导</span>
       </button>
       <button id="advancedBtn" class="status-btn" style="display:flex;align-items:center;gap:4px;background:rgba(100,100,100,0.85);">
         <span style="font-size:15px;">⚙</span>
-        <span>高级</span>
+        <span data-i18n="btn.advanced">高级</span>
       </button>
     </div>
   </div>
@@ -42,120 +46,120 @@
   <div id="window1" class="status-window">
     <form>
       <div class="window-row">
-        <label for="namePrefix">名称前缀</label>
-        <input id="namePrefix" type="text" placeholder="设备名关键字" value="">
+        <label for="namePrefix" data-i18n="label.namePrefix">名称前缀</label>
+        <input id="namePrefix" type="text" data-i18n-placeholder="placeholder.namePrefix" placeholder="设备名关键字" value="">
       </div>
-      <input id="name" type="text" placeholder="Device Name" hidden>
+      <input id="name" type="text" data-i18n-placeholder="placeholder.deviceName" placeholder="Device Name" hidden>
       <div id="bleStatusIndicator" class="ble-status">
         <span class="status-dot"></span>
-        <span class="status-text">蓝牙未连接</span>
+        <span class="status-text" data-i18n="status.bleNotConnected">蓝牙未连接</span>
       </div>
       <div class="window-row">
-        <label id="bleDeviceLabel">扫描蓝牙设备</label>
-        <button type="button" id="scanBLEBtn">🔍 扫描</button>
+        <label id="bleDeviceLabel" data-i18n="btn.scan">扫描蓝牙设备</label>
+        <button type="button" id="scanBLEBtn">🔍 <span data-i18n="btn.scan">扫描</span></button>
       </div>
     </form>
   </div>
 
   <!-- 弹窗2 -->
   <div id="window2" class="status-window">
-    <form>
-      <div class="window-row">
-        <label>SSID:</label>
-        <input id="ssid" type="text" value="Outside">
-        <button type="button" id="scanWifiBtn" style="white-space:nowrap;">📡 扫描</button>
-      </div>
-      <div id="scanResultContainer" style="display:none;margin-top:6px;">
-        <div id="scanResultList" class="scan-list"></div>
-        <div id="scanStatus" style="font-size:12px;color:#888;margin-top:4px;"></div>
-      </div>
-      <div class="window-row">
-        <label>密码:</label> <input id="password" type="text" value="yeslcd123">
-      </div>
-      <div class="window-row" >
-        <label>IP 地址:</label>
-        <input id="ipAddress" type="text" readonly placeholder="未连接">
-      </div>
-      <div class="window-row">
-        <button type="button" id="getIPBtn">查询 IP</button>
-        <button type="button" id="setWifiBtn">连接 WiFi</button>
-      </div>
-    </form>
+      <form>
+        <div class="window-row">
+          <label data-i18n="label.ssid">SSID:</label>
+          <input id="ssid" type="text" value="Outside">
+          <button type="button" id="scanWifiBtn" style="white-space:nowrap;">📡 <span data-i18n="btn.scanWifi">扫描 WiFi</span></button>
+        </div>
+        <div id="scanResultContainer" style="display:none;margin-top:6px;">
+          <div id="scanResultList" class="scan-list"></div>
+          <div id="scanStatus" style="font-size:12px;color:#888;margin-top:4px;"></div>
+        </div>
+        <div class="window-row">
+          <label data-i18n="label.password">密码:</label> <input id="password" type="text" value="yeslcd123">
+        </div>
+        <div class="window-row" >
+          <label data-i18n="label.ipAddress">IP 地址:</label>
+          <input id="ipAddress" type="text" readonly data-i18n-placeholder="placeholder.notConnected" placeholder="未连接">
+        </div>
+        <div class="window-row">
+          <button type="button" id="getIPBtn"><span data-i18n="btn.queryIp">查询 IP</span></button>
+          <button type="button" id="setWifiBtn"><span data-i18n="btn.connectWifi">连接 WiFi</span></button>
+        </div>
+      </form>
   </div>
 
   <!-- 高级设置弹窗 -->
   <div id="advancedWindow" class="status-window advanced-window">
     <div class="window-header">
-      <span style="font-weight:700;font-size:15px;">⚙ 高级设置</span>
-      <button id="closeAdvancedBtn" class="window-close-btn">✕</button>
+      <span style="font-weight:700;font-size:15px;">⚙ <span data-i18n="section.advancedSettings">高级设置</span></span>
+      <button id="closeAdvancedBtn" class="window-close-btn" data-i18n="btn.close">✕</button>
     </div>
 
     <!-- 扫描选项 -->
     <div class="window-section" id="bleFilterSection">
-      <div class="window-section-title">蓝牙扫描选项</div>
+      <div class="window-section-title" data-i18n="section.bleScanOptions">蓝牙扫描选项</div>
       <div class="window-row">
-        <label for="allDevices">扫描所有设备</label>
+        <label for="allDevices" data-i18n="label.scanAll">扫描所有设备</label>
         <input id="allDevices" type="checkbox">
       </div>
       <div class="window-row">
-        <label for="service">服务 UUID</label>
-        <input id="service" type="text" placeholder="如 0x00FF" value="0x00FF">
+        <label for="service" data-i18n="label.serviceUuid">服务 UUID</label>
+        <input id="service" type="text" data-i18n-placeholder="placeholder.serviceUuid" placeholder="如 0x00FF" value="0x00FF">
       </div>
       <div class="window-row">
-        <label for="characteristic">特征值</label>
-        <input id="characteristic" type="text" placeholder="可选">
+        <label for="characteristic" data-i18n="label.characteristic">特征值</label>
+        <input id="characteristic" type="text" data-i18n-placeholder="placeholder.characteristic" placeholder="可选">
       </div>
     </div>
 
     <!-- 设备配置 -->
     <div class="window-section">
-      <div class="window-section-title">设备配置</div>
+      <div class="window-section-title" data-i18n="section.deviceConfig">设备配置</div>
       <div id="setdevice">
         <div class="window-row">
-          <label>屏幕型号:</label>
+          <label data-i18n="label.model">屏幕型号:</label>
           <select id="modelSet"></select>
-          <button id="setdeviceBtn" style="margin:0;">设置型号</button>
+          <button id="setdeviceBtn" style="margin:0;" data-i18n="btn.setModel">设置型号</button>
         </div>
         <div class="window-row">
-          <label>自定义名称:</label>
-          <input id="customName" type="text" placeholder="蓝牙广播名称">
-          <button id="setCustomNameBtn" style="margin:0;">设置</button>
+          <label data-i18n="label.customName">自定义名称:</label>
+          <input id="customName" type="text" data-i18n-placeholder="placeholder.customName" placeholder="蓝牙广播名称">
+          <button id="setCustomNameBtn" style="margin:0;" data-i18n="btn.setName">设置</button>
         </div>
         <div class="window-row">
-          <label>工作模式:</label>
+          <label data-i18n="label.workingMode">工作模式:</label>
           <select id="woringModeSet">
-            <option value="0">0: 正常模式</option>
-            <option value="1">1: 相册模式</option>
+            <option value="0" data-i18n="mode.normal">0: 正常模式</option>
+            <option value="1" data-i18n="mode.album">1: 相册模式</option>
           </select>
-          <button id="setModeBtn" style="margin:0;">设置</button>
+          <button id="setModeBtn" style="margin:0;" data-i18n="btn.setMode">设置</button>
         </div>
       </div>
     </div>
 
     <!-- 图像操作 -->
     <div class="window-section">
-      <div class="window-section-title">图像操作</div>
+      <div class="window-section-title" data-i18n="section.imageOps">图像操作</div>
       <div class="window-row">
-        <button id="exportBinBtn" style="margin:0;">导出 BIN</button>
-        <button id="importBinBtn" style="margin:0;">导入 BIN</button>
+        <button id="exportBinBtn" style="margin:0;" data-i18n="btn.exportBin">导出 BIN</button>
+        <button id="importBinBtn" style="margin:0;" data-i18n="btn.importBin">导入 BIN</button>
         <input type="file" id="fileInput" style="display:none;" accept=".bin">
-        <button id="quantizedImagebtn" style="margin:0;">刷新预览</button>
+        <button id="quantizedImagebtn" style="margin:0;" data-i18n="btn.refreshPreview">刷新预览</button>
       </div>
       <div class="window-row" style="margin-top:8px;">
-        <button id="ClearBtn" style="margin:0;background-color:#e74c3c;">清屏</button>
+        <button id="ClearBtn" style="margin:0;background-color:#e74c3c;" data-i18n="btn.clearScreen">清屏</button>
       </div>
       <div class="window-row" style="margin-top:8px;">
-        <label style="min-width:auto;">日志面板</label>
-        <button id="toggleLogBtn" style="margin:0;">隐藏</button>
+        <label style="min-width:auto;" data-i18n="label.logPanel">日志面板</label>
+        <button id="toggleLogBtn" style="margin:0;" data-i18n="btn.toggleLog">隐藏</button>
       </div>
     </div>
 
     <!-- Flash 管理 -->
     <div class="window-section">
-      <div class="window-section-title">Flash 管理</div>
+      <div class="window-section-title" data-i18n="section.flashMgmt">Flash 管理</div>
       <div class="window-row">
-        <button id="saveToFlashBtn" class="btn" style="margin:0;">💾 持久化到 Flash</button>
-        <button id="clearFlashBtn" class="btn btn-danger" style="margin:0;">🗑️ 清空 Flash</button>
+        <button id="saveToFlashBtn" class="btn" style="margin:0;">💾 <span data-i18n="btn.saveFlash">持久化到 Flash</span></button>
+        <button id="clearFlashBtn" class="btn btn-danger" style="margin:0;">🗑️ <span data-i18n="btn.clearFlash">清空 Flash</span></button>
       </div>
     </div>
   </div>
@@ -217,27 +221,27 @@
       <div id="stepActions">
         <div class="nav-col">
           <button id="prevStepBtn" class="step-circle-btn">←</button>
-          <span class="nav-label" id="prevLabel">上一步</span>
+          <span class="nav-label" id="prevLabel" data-i18n="btn.prevStep">上一步</span>
         </div>
         <span class="step-line invis"></span>
         <div class="nav-col">
           <span class="step-dot active" data-step="1">1</span>
-          <span class="nav-label active" data-s="1">裁剪</span>
+          <span class="nav-label active" data-s="1" data-i18n="step.crop">裁剪</span>
         </div>
         <span class="step-line"></span>
         <div class="nav-col">
           <span class="step-dot" data-step="2">2</span>
-          <span class="nav-label" data-s="2">文字</span>
+          <span class="nav-label" data-s="2" data-i18n="step.text">文字</span>
         </div>
         <span class="step-line"></span>
         <div class="nav-col">
           <span class="step-dot" data-step="3">3</span>
-          <span class="nav-label" data-s="3">量化</span>
+          <span class="nav-label" data-s="3" data-i18n="step.quantize">量化</span>
         </div>
         <span class="step-line invis"></span>
         <div class="nav-col">
           <button id="nextStepBtn" class="step-circle-btn">→</button>
-          <span class="nav-label" id="nextLabel">下一步</span>
+          <span class="nav-label" id="nextLabel" data-i18n="btn.nextStep">下一步</span>
         </div>
       </div>
 
@@ -251,20 +255,20 @@
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <path d="M3 9h18M9 21V9" />
               </svg>
-              <span>点击"选择图片"上传</span>
+              <span data-i18n="crop.placeholder">点击"选择图片"上传</span>
             </div>
             <img id="cropperImage" style="display:none; max-width:100%; max-height:100%;" alt="">
           </div>
         </div>
         <div id="imageToolbar">
           <div id="flipControl">
-            <button type="button" id="flipHorizontal">水平</button>
-            <button type="button" id="flipVertical">垂直</button>
-            <button type="button" id="rotateLeft">CCW90°</button>
-            <button type="button" id="rotateRight">CW90°</button>
+            <button type="button" id="flipHorizontal" data-i18n="crop.flipH">水平</button>
+            <button type="button" id="flipVertical" data-i18n="crop.flipV">垂直</button>
+            <button type="button" id="rotateLeft" data-i18n="crop.rotateL">CCW90°</button>
+            <button type="button" id="rotateRight" data-i18n="crop.rotateR">CW90°</button>
           </div>
           <div>
-            <button id="uploadImageBtn">📂 选择图片</button>
+            <button id="uploadImageBtn">📂 <span data-i18n="btn.uploadImage">选择图片</span></button>
             <input type="file" id="imageInput" accept="image/*" style="display:none">
           </div>
         </div>
@@ -279,17 +283,17 @@
                 opacity="0.4">
                 <path d="M4 7V4h16v3M9 20h6M12 4v16" />
               </svg>
-              <span>文字编辑预览</span>
+              <span data-i18n="text.placeholder">文字编辑预览</span>
             </div>
             <canvas id="textEditCanvas"></canvas>
           </div>
         </div>
         <div id="textToolbar">
-          <input type="text" id="textInput" placeholder="输入文字..." style="flex:1;min-width:80px;max-width:200px;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
-          <button id="addTextBtn" type="button">➕ 添加文字</button>
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;">颜色 <input type="color" id="textColorPicker" value="#ffffff" style="width:28px;height:28px;border:none;padding:0;cursor:pointer;"></label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;">字号 <input type="range" id="textFontSize" min="12" max="120" value="32" style="width:80px;"><span id="textFontSizeVal">32</span></label>
-          <button id="deleteTextBtn" type="button">🗑️ 删除选中</button>
+          <input type="text" id="textInput" data-i18n-placeholder="placeholder.textInput" placeholder="输入文字..." style="flex:1;min-width:80px;max-width:200px;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:14px;">
+          <button id="addTextBtn" type="button">➕ <span data-i18n="btn.addText">添加文字</span></button>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><span data-i18n="label.color">颜色</span> <input type="color" id="textColorPicker" value="#ffffff" style="width:28px;height:28px;border:none;padding:0;cursor:pointer;"></label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><span data-i18n="label.fontSize">字号</span> <input type="range" id="textFontSize" min="12" max="120" value="32" style="width:80px;"><span id="textFontSizeVal">32</span></label>
+          <button id="deleteTextBtn" type="button">🗑️ <span data-i18n="btn.deleteText">删除选中</span></button>
         </div>
       </div>
 
@@ -305,23 +309,23 @@
                 <rect x="2" y="13" width="9" height="9" />
                 <rect x="13" y="13" width="9" height="9" />
               </svg>
-              <span>量化预览</span>
+              <span data-i18n="quantize.placeholder">量化预览</span>
             </div>
-            <img id="quantizedImage" alt="量化图">
+            <img id="quantizedImage" data-i18n-alt="quantize.alt" alt="量化图">
           </div>
         </div>
         <div class="adjust-controls" style="margin-top:0;">
           <label class="lut-label">
-            色彩增强 (LUT) <input type="checkbox" id="useLutCheckbox" checked>
+            <span data-i18n="label.colorEnhance">色彩增强 (LUT)</span> <input type="checkbox" id="useLutCheckbox" checked>
           </label>
           <div class="slider-row">
-            <label>亮度 <span id="brightnessVal">0</span></label>
+            <label><span data-i18n="label.brightness">亮度</span> <span id="brightnessVal">0</span></label>
             <button class="step-btn" data-target="brightness" data-step="-1">−</button>
             <input type="range" id="brightness" min="-100" max="100" value="0">
             <button class="step-btn" data-target="brightness" data-step="1">+</button>
           </div>
           <div class="slider-row">
-            <label>对比度 <span id="contrastVal">0</span></label>
+            <label><span data-i18n="label.contrast">对比度</span> <span id="contrastVal">0</span></label>
             <button class="step-btn" data-target="contrast" data-step="-1">−</button>
             <input type="range" id="contrast" min="-100" max="100" value="0">
             <button class="step-btn" data-target="contrast" data-step="1">+</button>
@@ -332,17 +336,17 @@
     </div><!-- #imageSection -->
 
     <div id="sendArea">
-      <button id="sendBtnBle">📤 蓝牙发送</button>
-      <button id="sendBtnIP">📤 WiFi 发送</button>
+      <button id="sendBtnBle">📤 <span data-i18n="btn.sendBle">蓝牙发送</span></button>
+      <button id="sendBtnIP">📤 <span data-i18n="btn.sendWifi">WiFi 发送</span></button>
     </div>
 
     <footer>
-      <span>Powered by</span>
+      <span data-i18n="footer.poweredBy">Powered by</span>
       <a href="https://www.yes-lcd.com/" target="_blank"><img src="assets/yes-lcd.jpg" alt="yes-lcd"></a>
       <a href="https://www.newface-epd.com" target="_blank"><img src="assets/newface-epd.png" alt="newface-epd"></a>
     </footer>
 
-    <div id="status">状态：等待操作...</div>
+    <div id="status"></div>
 
   </div><!-- #mainContainer -->
 
@@ -365,10 +369,10 @@
       <div class="tour-body">
         <div class="tour-text" id="tourText"></div>
         <div class="tour-buttons">
-          <button id="tourSkipBtn" class="tour-btn tour-btn-skip">跳过引导</button>
-          <button id="tourPrevBtn" class="tour-btn tour-btn-prev" style="display:none;">← 上一步</button>
-          <button id="tourNextBtn" class="tour-btn tour-btn-next">下一步 →</button>
-          <button id="tourFinishBtn" class="tour-btn tour-btn-finish" style="display:none;">✓ 完成</button>
+          <button id="tourSkipBtn" class="tour-btn tour-btn-skip" data-i18n="btn.skipTour">跳过引导</button>
+          <button id="tourPrevBtn" class="tour-btn tour-btn-prev" style="display:none;">← <span data-i18n="btn.prevTour">上一步</span></button>
+          <button id="tourNextBtn" class="tour-btn tour-btn-next"><span data-i18n="btn.nextTour">下一步</span> →</button>
+          <button id="tourFinishBtn" class="tour-btn tour-btn-finish" style="display:none;">✓ <span data-i18n="btn.finish">完成</span></button>
         </div>
       </div>
     </div>
@@ -376,6 +380,7 @@
 
   <!-- ── 应用模块（按依赖顺序加载）────────────────────────────── -->
   <script src="src/core/state.js"></script>
+  <script src="src/core/i18n.js"></script>
   <script src="src/core/scheduler.js"></script>
   <script src="src/core/text-editor.js"></script>
   <script src="src/core/image-pipeline.js"></script>
