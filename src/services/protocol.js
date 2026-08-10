@@ -30,6 +30,7 @@ const EPD = (() => {
     SET_CUSTOM_NAME:  0x0A, // 设置自定义蓝牙名称：[0x0A, ...name_utf8]
     QUERY_PROGRESS:   0x0B, // 查询传输进度（返回 2 字节百分比）
     WIFI_SCAN:        0x0C, // 触发 WiFi 扫描（读 FF04 取 JSON 结果）
+    SET_ALBUM_INTERVAL: 0x0D, // 设置相册刷图间隔：[0x0D, minutes]（读 FF04 返回 1 字节当前分钟数）
   });
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -269,6 +270,35 @@ const EPD = (() => {
   }
 
   /**
+   * 设置相册模式刷图间隔
+   * 帧格式：[0x0D, minutes]
+   *
+   * @param {number} minutes  间隔分钟数（1~255，固件会 clamp）
+   */
+  async function setAlbumInterval(minutes) {
+    const payload = new Uint8Array([CMD.SET_ALBUM_INTERVAL, minutes & 0xFF]);
+    _log(I18n.t('log.cmdSetAlbumInterval', { minutes }));
+    await BLE.write(payload);
+    _log(I18n.t('log.cmdSetAlbumIntervalDone'));
+  }
+
+  /**
+   * 查询当前相册刷图间隔
+   * 发送 CMD_SET_ALBUM_INTERVAL 查询帧，读取 RX 返回的 1 字节分钟数
+   *
+   * @param   {number} [timeoutMs=5000]
+   * @returns {Promise<number>}  当前间隔分钟数
+   */
+  async function getAlbumInterval(timeoutMs = 5000) {
+    await BLE.write(new Uint8Array([CMD.SET_ALBUM_INTERVAL]));
+    const value = await BLE.read(timeoutMs);
+    const bytes = new Uint8Array(value.buffer);
+    const minutes = bytes.length >= 1 ? bytes[0] : 0;
+    _log(I18n.t('log.cmdGetAlbumInterval', { minutes }));
+    return minutes;
+  }
+
+  /**
    * 清屏
    * 帧格式：[0x06, colorIndex]
    *
@@ -408,6 +438,8 @@ const EPD = (() => {
     setDeviceName,
     setCustomName,
     setWorkingMode,
+    setAlbumInterval,
+    getAlbumInterval,
     clearScreen,
     /* 图像传输 */
     sendImageBle,

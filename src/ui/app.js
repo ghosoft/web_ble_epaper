@@ -214,6 +214,13 @@
         const info = await EPD.getDeviceInfo();
         applyDeviceInfoToUI(info);
 
+        try {
+          const minutes = await EPD.getAlbumInterval(2000);
+          if (minutes > 0) document.getElementById('albumInterval').value = minutes;
+        } catch {
+          App.log(I18n.t('log.intervalQueryFail', { msg: 'timeout' }));
+        }
+
         const ipInput = document.getElementById('ipAddress');
         const savedIp = localStorage.getItem('saved_device_ip');
         if (savedIp) ipInput.value = savedIp;
@@ -378,6 +385,13 @@
       const mode = parseInt(document.getElementById('woringModeSet').value);
       try { await EPD.setWorkingMode(mode); App.log(I18n.t('log.modeSetSuccess')); }
       catch (e) { App.log(I18n.t('log.modeSetFail', { msg: e.message })); alert(I18n.t('alert.sendFailed', { msg: e.message })); }
+    });
+
+    document.getElementById('setIntervalBtn').addEventListener('click', async () => {
+      const minutes = parseInt(document.getElementById('albumInterval').value, 10);
+      if (isNaN(minutes) || minutes < 1 || minutes > 255) { alert(I18n.t('alert.intervalInvalid')); return; }
+      try { await EPD.setAlbumInterval(minutes); App.log(I18n.t('log.intervalSetSuccess', { minutes })); }
+      catch (e) { App.log(I18n.t('log.setIntervalFail', { msg: e.message })); alert(I18n.t('alert.sendFailed', { msg: e.message })); }
     });
 
     document.getElementById('ClearBtn').addEventListener('click', async () => {
