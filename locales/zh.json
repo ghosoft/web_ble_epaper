@@ -63,6 +63,7 @@
   "label.color": "颜色",
   "label.fontSize": "字号",
   "label.logPanel": "日志面板",
+  "label.language": "语言:",
 
   "placeholder.namePrefix": "设备名关键字",
   "placeholder.deviceName": "Device Name",
@@ -72,6 +73,7 @@
   "placeholder.customName": "蓝牙广播名称",
   "placeholder.textInput": "输入文字...",
 
+  "section.language": "语言",
   "section.bleScanOptions": "蓝牙扫描选项",
   "section.deviceConfig": "设备配置",
   "section.imageOps": "图像操作",
@@ -103,8 +105,6 @@
 
   "device.dimLabel": "屏幕尺寸: {w} × {h} px",
   "device.noDevice": "— 请先连接设备以获取屏幕尺寸 —",
-
-  "footer.poweredBy": "Powered by",
 
   "alert.enterText": "请输入文字",
   "alert.ssidPwdRequired": "请先输入完整的 SSID 和密码",

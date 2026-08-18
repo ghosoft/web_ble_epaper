@@ -63,6 +63,7 @@
   "label.color": "Color",
   "label.fontSize": "Font Size",
   "label.logPanel": "Log Panel",
+  "label.language": "Language:",
 
   "placeholder.namePrefix": "Device name keyword",
   "placeholder.deviceName": "Device Name",
@@ -72,6 +73,7 @@
   "placeholder.customName": "BLE broadcast name",
   "placeholder.textInput": "Enter text...",
 
+  "section.language": "Language",
   "section.bleScanOptions": "BLE Scan Options",
   "section.deviceConfig": "Device Config",
   "section.imageOps": "Image Operations",
@@ -103,8 +105,6 @@
 
   "device.dimLabel": "Screen Size: {w} × {h} px",
   "device.noDevice": "— Connect a device first to get screen size —",
-
-  "footer.poweredBy": "Powered by",
 
   "alert.enterText": "Please enter text",
   "alert.ssidPwdRequired": "Please enter SSID and password first",
